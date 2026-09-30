@@ -328,6 +328,42 @@ window.FIREBASE_CONFIG = {
     </div>
 
     <p class="small" id="loginError" style="color:var(--bad);margin-top:8px;"></p>
+    <div style="text-align:center;margin-top:14px;font-size:11px;color:#9aa">Kwa msaada: info@kiseja.com · 0736631613</div>
+    <div style="text-align:center;margin-top:6px;"><a href="#" onclick="openSuperAdmin();return false;" style="font-size:11px;color:#9aa;text-decoration:underline">Admin wa Mfumo (Msimamizi wa Huduma)</a></div>
+  </div>
+</div>
+
+<div id="subLockScreen" style="display:none;position:fixed;inset:0;background:rgba(18,51,80,.96);z-index:9000;align-items:center;justify-content:center;padding:16px;overflow:auto">
+  <div class="login-box" style="max-width:460px">
+    <h2 id="subLockTitle">⏳ Muda wa Majaribio</h2>
+    <p class="small" id="subLockMsg"></p>
+    <div class="note-box" id="subLockPayInfo" style="text-align:left"></div>
+    <div class="field"><label>Namba ya Kumbukumbu ya Malipo</label><input id="subRef" placeholder="Mf: QK7X9..."></div>
+    <div class="field"><label>Maelezo (hiari)</label><input id="subNote" placeholder="Mf: Nimelipa kwa YAS Lipa Namba"></div>
+    <button class="btn accent" style="width:100%" onclick="submitPlatformPayment()">Tuma Taarifa za Malipo</button>
+    <div id="subPendingList" style="margin-top:10px"></div>
+    <button class="btn ghost" style="width:100%;margin-top:14px" onclick="doLogout()">Toka (Logout)</button>
+  </div>
+</div>
+
+<div id="superAdminScreen" style="display:none;position:fixed;inset:0;background:#0d2438;z-index:9500;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto">
+  <div style="max-width:900px;width:100%">
+    <div id="saGate" class="login-box" style="max-width:400px;margin:40px auto">
+      <h2 id="saGateTitle">Admin wa Mfumo</h2>
+      <div class="field"><label>Nenosiri</label><input type="password" id="saPass"></div>
+      <button class="btn accent" style="width:100%" onclick="saLogin()">Ingia</button>
+      <p class="small" id="saGateErr" style="color:var(--bad)"></p>
+      <button class="btn ghost" style="width:100%;margin-top:10px" onclick="closeSuperAdmin()">Rudi Nyuma</button>
+    </div>
+    <div id="saPanel" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;color:#fff;margin-bottom:14px">
+        <h2 style="margin:0">🛠️ Taasisi Zote — Msimamizi wa Huduma</h2>
+        <button class="btn ghost" onclick="closeSuperAdmin()">Funga</button>
+      </div>
+      <div class="card">
+        <div class="table-scroll"><table><thead><tr><th>Taasisi</th><th>Hali</th><th>Kumbukumbu za Malipo Zinazosubiri</th><th></th></tr></thead><tbody id="saTbody"></tbody></table></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1016,6 +1052,11 @@ Maid R. Nsonjo | 40000"></textarea>
       <div class="field" id="usSubjectField" style="display:none"><label>Somo Analoifundisha</label><input id="usSubject"></div>
     </div>
     <div class="field">
+      <label style="margin-bottom:6px">Ngazi Anazoruhusiwa Kuona (data za wanafunzi/madarasa)</label>
+      <p class="small">Ikiachwa wazi (hakuna kilichotiki), mtumiaji ataona ngazi ZOTE. Chagua ili kumzuia asione data za ngazi asizohusika nazo.</p>
+      <div id="usLevels" class="grid g2"></div>
+    </div>
+    <div class="field">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <label style="margin-bottom:0;">Anachoruhusiwa Kuona/Kufanya (chagua kurasa anazoruhusiwa)</label>
         <button class="btn sm ghost" type="button" onclick="applyRoleDefaultsToForm()">Tumia Chaguo-Msingi za Wadhifa</button>
@@ -1046,6 +1087,7 @@ function normalizeDB(db){
   if(!db.library.books) db.library.books=[];
   if(!db.library.loans) db.library.loans=[];
   if(!db.school.paylistCfg) db.school.paylistCfg = {threshold:80000, dayFee:80000, hostelFee:350000};
+  if(!db.school.subscription) db.school.subscription = {status:'active', trialStart:null, activatedUntil:null, payments:[]};
   return db;
 }
 const NGAZI_OPTS = ["Awali","Msingi (Primary)","Pre-Form One","Sekondari (Secondary)","Stashahada (Diploma)","Shahada (Degree)","Chuo Kikuu"];
@@ -1241,6 +1283,7 @@ async function registerInstitution(){
   const instId = uid();
   DB = blankDB();
   DB.school.jina = instName;
+  DB.school.subscription = {status:'trial', trialStart:new Date().toISOString(), activatedUntil:null, payments:[]};
   DB.users.push({id:uid(), jina, email, pass, role:"Msimamizi Mkuu", subject:"", positions:[], darasa:"", permissions: defaultPermsForRole("Msimamizi Mkuu")});
   currentInstId = instId;
   currentUser = DB.users[0];
@@ -1296,6 +1339,7 @@ async function doLogout(silent){
   document.getElementById('app').style.display='none';
   document.body.classList.add('logged-out');
   document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('subLockScreen').style.display='none';
   document.getElementById('lgEmail').value=''; document.getElementById('lgPass').value='';
   document.getElementById('sidebar').classList.remove('open'); document.getElementById('navOverlay').classList.remove('show');
 }
@@ -1307,6 +1351,7 @@ function enterApp(){
   document.getElementById('curUserRole').innerHTML = `<span class="role-tag">${currentUser.role}</span><div style="font-size:11px;opacity:.75;margin-top:2px">${esc(DB.school.jina||'')}</div>`;
   applyRoleVisibility();
   document.getElementById('repFrom').value = currentUser.email;
+  checkSubscriptionGate();
   init();
 }
 function toggleMobileNav(){
@@ -1369,6 +1414,7 @@ function openUserModal(id){
   document.getElementById('usSubjectField').style.display = (u?.role||document.getElementById('usRole').value)==='Mwalimu'?'block':'none';
   document.getElementById('usSubject').value = u?.subject||'';
   document.getElementById('usPerms').innerHTML = permsCheckboxHtml(u?.permissions || defaultPermsForRole(u?.role||document.getElementById('usRole').value));
+  document.getElementById('usLevels').innerHTML = LEVEL_GROUPS.map(g=>`<label class="chip-check"><input type="checkbox" class="lvlChk" value="${g.key}" ${(u?.allowedLevels||[]).includes(g.key)?'checked':''}> ${esc(g.label)}</label>`).join('');
   document.getElementById('usCanEdit').checked = u ? (u.canEdit!==false) : true;
   document.getElementById('usCanDelete').checked = u ? (u.canDelete!==false) : true;
   document.getElementById('userModalTitle').textContent = id ? 'Hariri Mtumiaji' : 'Sajili Mtumiaji Mpya';
@@ -1383,6 +1429,7 @@ async function saveUser(){
   const permissions = Array.from(document.querySelectorAll('.permChk:checked')).map(c=>c.value);
   const canEdit = document.getElementById('usCanEdit').checked;
   const canDelete = document.getElementById('usCanDelete').checked;
+  const allowedLevels = Array.from(document.querySelectorAll('.lvlChk:checked')).map(c=>c.value);
   if(!jina||!email||!pass){ alert('Jaza sehemu zote.'); return; }
   const idx = await getGlobalIndex();
   if(id){
@@ -1390,7 +1437,7 @@ async function saveUser(){
     if(existing && existing.instId!==currentInstId){ alert('Barua pepe hii tayari inatumika na taasisi nyingine.'); return; }
     const u = DB.users.find(x=>x.id===id);
     const oldEmail = u.email;
-    Object.assign(u, {jina, email, pass, role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", permissions, canEdit, canDelete});
+    Object.assign(u, {jina, email, pass, role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", permissions, canEdit, canDelete, allowedLevels});
     if(oldEmail.toLowerCase()!==email){
       const gi = idx.find(x=>x.email.toLowerCase()===oldEmail.toLowerCase());
       if(gi) gi.email = email;
@@ -1398,7 +1445,7 @@ async function saveUser(){
     }
   } else {
     if(idx.some(x=>x.email.toLowerCase()===email)){ alert('Barua pepe hii tayari imesajiliwa mahali pengine.'); return; }
-    DB.users.push({id:uid(), jina, email, pass, role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", positions:[], darasa:'', permissions, canEdit, canDelete});
+    DB.users.push({id:uid(), jina, email, pass, role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", positions:[], darasa:'', permissions, canEdit, canDelete, allowedLevels});
     idx.push({email, instId:currentInstId, instName: DB.school.jina||''});
     await saveGlobalIndex(idx);
   }
@@ -1592,7 +1639,7 @@ async function saveStudent(){
 }
 function renderStudentTable(filter){
   const tb = document.getElementById('studentTbody');
-  let list = DB.students;
+  let list = visibleStudents();
   if(filter) list = list.filter(s=>s.jina.toLowerCase().includes(filter.toLowerCase()));
   if(!list.length){ tb.innerHTML = `<tr><td colspan="6" class="empty">Hakuna mwanafunzi aliyesajiliwa bado.</td></tr>`; return; }
   tb.innerHTML = list.map(s=>`
@@ -3536,7 +3583,7 @@ async function genCalendar(){
 }
 function printCalendar(){ printSection('calPrint','Kalenda ya mwaka '+calYear); }
 // ---- Ratiba ya vipindi (na muhula) ----
-function classChoices(){ const set=new Set(ALL_CLASSES); DB.students.forEach(s=>{ if(s.darasa) set.add(s.darasa.trim()); }); DB.timetable.forEach(t=>set.add(t.darasa)); const seen={},out=[]; [...set].filter(Boolean).forEach(c=>{ const k=normClass(c); if(!seen[k]){ seen[k]=1; out.push(c); } }); return out; }
+function classChoices(){ const set=new Set(ALL_CLASSES); DB.students.forEach(s=>{ if(s.darasa) set.add(s.darasa.trim()); }); DB.timetable.forEach(t=>set.add(t.darasa)); const seen={},out=[]; [...set].filter(Boolean).forEach(c=>{ const k=normClass(c); if(!seen[k]){ seen[k]=1; out.push(c); } }); return out.filter(classAllowedForUser); }
 function termList(){ return DB.calendar.filter(e=>e.aina==='Muhula').sort((a,b)=>a.kuanzia.localeCompare(b.kuanzia)); }
 function termsOverlap(a,b){ return !a||!b||a===b; }
 function renderTimetablePage(){
@@ -3755,8 +3802,8 @@ function verifyReceipt(){
   $('vrOut').innerHTML=`<div class="note-box" style="border-color:${okAll?'var(--good)':'var(--accent)'}">${okAll?'✅ <b>Risiti halali</b>':'⚠️ <b>Risiti ipo lakini taarifa hazilingani</b> (kiasi/tarehe/namba huenda imebadilishwa)'}: ${esc(no)} — ${esc(s.jina||'')}, ${tzs(found.p.kiasi)}, ${esc(found.p.tarehe)}, ${esc(found.p.aina||'')} (${esc(found.p.njia||'')}), imepokelewa na ${esc(found.p.na||'')}.</div>`;
 }
 function renderFeesTable(){
-  const tb=$('feesTbody'); if(!DB.students.length){ tb.innerHTML='<tr><td colspan="6" class="empty">Hakuna wanafunzi.</td></tr>'; return; }
-  tb.innerHTML=DB.students.map(s=>{ const f=DB.fees[s.id]||{ada_jumla:0,malipo:[]}; const paid=(f.malipo||[]).reduce((a,b)=>a+Number(b.kiasi||0),0), bal=(f.ada_jumla||0)-paid;
+  const tb=$('feesTbody'); const feesList=visibleStudents(); if(!feesList.length){ tb.innerHTML='<tr><td colspan="6" class="empty">Hakuna wanafunzi.</td></tr>'; return; }
+  tb.innerHTML=feesList.map(s=>{ const f=DB.fees[s.id]||{ada_jumla:0,malipo:[]}; const paid=(f.malipo||[]).reduce((a,b)=>a+Number(b.kiasi||0),0), bal=(f.ada_jumla||0)-paid;
     const st=bal<=0?'<span class="pill good">Amelipa Kamili</span>':(paid>0?'<span class="pill neutral">Sehemu</span>':'<span class="pill bad">Hajalipa</span>');
     return `<tr><td>${esc(s.jina)}<div class="small">${esc(s.regNo||'')}</div></td><td>${(f.ada_jumla||0).toLocaleString()}</td><td>${paid.toLocaleString()}</td><td>${bal.toLocaleString()}</td><td>${st}</td><td class="row-actions"><button class="btn sm accent" onclick="openPayment('${s.id}')">+ Malipo</button><button class="btn sm ghost" onclick="showReceipts('${s.id}')">Risiti</button>${smsButtonForStudent(s,'fees')}</td></tr>`; }).join('');
 }
@@ -4017,6 +4064,154 @@ function printPmtList(){
       <div><div style="border-top:1px solid #999;height:30px"></div><div class="small">Sahihi ya Mkuu wa Shule/Chuo${hn?'<br><b>'+esc(hn)+'</b>':''}</div></div>
     </div>`;
   printSection('pmtPrintBox','Orodha ya malipo '+darasa,true);
+}
+
+// ===== v6 (billing/superadmin/levels) =====
+// ================= NGAZI YA UONEKANI (LEVEL VISIBILITY) =================
+const LEVEL_GROUPS = [
+  {key:'awali', label:'Awali', test:s=>s.ngazi==='Awali'},
+  {key:'msingi', label:'Msingi (Darasa 1-7 / Primary)', test:s=>s.ngazi==='Msingi (Primary)'},
+  {key:'preform', label:'Pre-Form One', test:s=>s.ngazi==='Pre-Form One'},
+  {key:'sekondari_o', label:'Sekondari (Form 1-4)', test:s=>s.ngazi==='Sekondari (Secondary)' && ['Form One','Form Two','Form Three','Form Four'].some(f=>sameClass(s.darasa,f))},
+  {key:'sekondari_a', label:'A-Level (Form 5-6)', test:s=>s.ngazi==='Sekondari (Secondary)' && ['Form Five','Form Six'].some(f=>sameClass(s.darasa,f))}
+];
+function levelKeyForClass(c){
+  const nc = normClass(c);
+  if(CLASS_GROUPS[0].madarasa.some(m=>normClass(m)===nc)) return 'awali';
+  if(CLASS_GROUPS[1].madarasa.some(m=>normClass(m)===nc)) return 'msingi';
+  if(nc==='pre-form one') return 'preform';
+  if(['form 1','form 2','form 3','form 4'].includes(nc)) return 'sekondari_o';
+  if(['form 5','form 6'].includes(nc)) return 'sekondari_a';
+  return null;
+}
+function userCanSeeStudent(u, s){
+  if(isAdminUser(u)) return true;
+  const lv = u.allowedLevels; if(!lv || !lv.length) return true;
+  return LEVEL_GROUPS.filter(g=>lv.includes(g.key)).some(g=>g.test(s));
+}
+function visibleStudents(){ return DB.students.filter(s=>userCanSeeStudent(currentUser,s)); }
+function classAllowedForUser(c){
+  if(isAdminUser()) return true;
+  const lv = currentUser.allowedLevels; if(!lv || !lv.length) return true;
+  const k = levelKeyForClass(c); return k ? lv.includes(k) : true;
+}
+
+// ================= MFUMO WA MALIPO (JARIBIO SIKU 7 + TSH 30,000/MWEZI) =================
+const PLATFORM_PAYMENT_INFO = [
+  {jina:'YAS (Lipa Namba)', namba:'17517483'},
+  {jina:'TCB Bank', namba:'340400000026'}
+];
+const PLATFORM_CONTACT = {email:'info@kiseja.com', simu:'0736631613'};
+function subscriptionActive(){
+  const sub = DB.school.subscription; if(!sub) return true;
+  if(sub.status==='off') return false;
+  if(sub.status==='active') return !sub.activatedUntil || new Date(sub.activatedUntil) >= new Date();
+  if(sub.status==='trial') return !sub.trialStart || (new Date(sub.trialStart).getTime()+7*86400000) >= Date.now();
+  return true;
+}
+function trialDaysLeft(){
+  const sub = DB.school.subscription; if(!sub||!sub.trialStart) return null;
+  const end = new Date(sub.trialStart).getTime()+7*86400000;
+  return Math.max(0, Math.ceil((end-Date.now())/86400000));
+}
+function checkSubscriptionGate(){
+  const box = $('subLockScreen'); if(!box) return;
+  if(subscriptionActive()){ box.style.display='none'; return; }
+  renderSubLock(); box.style.display='flex';
+}
+function renderSubLock(){
+  const sub = DB.school.subscription || {};
+  $('subLockTitle').textContent = sub.status==='off' ? '⛔ Huduma Imesimamishwa' : '⏳ Muda wa Majaribio Umekwisha';
+  $('subLockMsg').innerHTML = sub.status==='off'
+    ? 'Akaunti ya taasisi yako imezimwa na msimamizi wa huduma. Wasiliana naye kwa maelezo zaidi.'
+    : `Muda wako wa siku 7 wa kutumia mfumo bure umekwisha. Ili kuendelea kutumia mfumo, lipa <b>TZS 30,000 kwa mwezi</b> (unaweza kulipa zaidi ya mwezi mmoja kwa mara moja).`;
+  $('subLockPayInfo').innerHTML = '<b>Lipa kupitia:</b><br>'+PLATFORM_PAYMENT_INFO.map(a=>`🏦 ${esc(a.jina)}: <b>${esc(a.namba)}</b>`).join('<br>')+'<br><span class="small">Baada ya kulipa, jaza namba ya kumbukumbu ya malipo hapa chini na utume. Utawashiwa huduma hivi karibuni.</span><br><br><b>Mawasiliano:</b><br>✉️ '+esc(PLATFORM_CONTACT.email)+'<br>📞 '+esc(PLATFORM_CONTACT.simu);
+  const pend = (sub.payments||[]).slice().reverse();
+  $('subPendingList').innerHTML = pend.length ? '<b class="small">Ulizotuma:</b>'+pend.map(p=>`<div class="small" style="padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.2)">📌 ${esc(p.ref)} ${p.note?'— '+esc(p.note):''} — <span class="pill ${p.status==='confirmed'?'good':'warn'}">${p.status==='confirmed'?'Imethibitishwa':'Inasubiri'}</span></div>`).join('') : '';
+}
+async function submitPlatformPayment(){
+  const ref = $('subRef').value.trim(); const note = $('subNote').value.trim();
+  if(!ref){ alert('Andika namba ya kumbukumbu ya malipo.'); return; }
+  DB.school.subscription = DB.school.subscription || {status:'trial', trialStart:new Date().toISOString(), activatedUntil:null, payments:[]};
+  DB.school.subscription.payments.push({id:uid(), ref, note, submittedAt:new Date().toISOString(), status:'pending'});
+  await persist(); $('subRef').value=''; $('subNote').value=''; renderSubLock();
+  alert('Asante! Taarifa za malipo zimetumwa. Utawashiwa huduma baada ya kuthibitishwa.');
+}
+
+// ================= ADMIN WA MFUMO (SUPER ADMIN — TAASISI ZOTE) =================
+const PLATFORM_ADMIN_KEY = 'platform_admin_auth';
+async function getPlatformAdminPass(){
+  try{ const r = await window.storage.get(PLATFORM_ADMIN_KEY, true); return r && r.value ? JSON.parse(r.value).pass : null; }catch(e){ return null; }
+}
+async function setPlatformAdminPass(pass){ await window.storage.set(PLATFORM_ADMIN_KEY, JSON.stringify({pass}), true); }
+async function openSuperAdmin(){
+  $('loginScreen').style.display='none'; $('superAdminScreen').style.display='flex';
+  $('saGate').style.display='block'; $('saPanel').style.display='none'; $('saPass').value=''; $('saGateErr').textContent='';
+  const existing = await getPlatformAdminPass();
+  $('saGateTitle').textContent = existing ? 'Ingia kama Admin Mkuu wa Mfumo' : 'Weka Nenosiri la Kwanza la Admin Mkuu';
+}
+function closeSuperAdmin(){ $('superAdminScreen').style.display='none'; $('loginScreen').style.display='flex'; }
+async function saLogin(){
+  const p = $('saPass').value; const existing = await getPlatformAdminPass();
+  if(!existing){
+    if(!p || p.length<4){ $('saGateErr').textContent='Weka nenosiri lenye herufi/namba 4 au zaidi.'; return; }
+    await setPlatformAdminPass(p);
+  } else if(p!==existing){ $('saGateErr').textContent='Nenosiri si sahihi.'; return; }
+  $('saGate').style.display='none'; $('saPanel').style.display='block';
+  await renderSuperAdmin();
+}
+function subInfo(school){
+  const sub = (school && school.subscription) || {status:'active', trialStart:null, activatedUntil:null, payments:[]};
+  const now = new Date(); let label, cls;
+  if(sub.status==='off'){ label='Imezimwa'; cls='bad'; }
+  else if(sub.status==='active'){
+    if(sub.activatedUntil){ const until=new Date(sub.activatedUntil); if(until>=now){ label='Amelipia hadi '+sub.activatedUntil.slice(0,10); cls='good'; } else { label='Muda wa malipo umeisha'; cls='bad'; } }
+    else { label='Hai (bila ukomo)'; cls='good'; }
+  } else if(sub.status==='trial'){
+    const trialEnd = sub.trialStart ? new Date(new Date(sub.trialStart).getTime()+7*86400000) : null;
+    if(trialEnd && trialEnd>=now){ const d=Math.ceil((trialEnd-now)/86400000); label='Majaribio: siku '+d+' zilizobaki'; cls='warn'; }
+    else { label='Majaribio yamekwisha'; cls='bad'; }
+  } else { label='Haijulikani'; cls='neutral'; }
+  return {sub, label, cls};
+}
+async function renderSuperAdmin(){
+  const idx = await getGlobalIndex(); const byInst = {};
+  idx.forEach(e=>{ (byInst[e.instId] = byInst[e.instId] || {instId:e.instId, instName:e.instName, emails:[]}).emails.push(e.email); });
+  const list = Object.values(byInst);
+  const rows = await Promise.all(list.map(async inst=>{
+    const school = await readKey(inst.instId,'school') || {};
+    const info = subInfo(school);
+    const pending = ((school.subscription||{}).payments||[]).filter(p=>p.status==='pending');
+    return {inst, school, info, pending};
+  }));
+  const order = {bad:0, warn:1, neutral:2, good:3};
+  rows.sort((a,b)=>(order[a.info.cls]??9)-(order[b.info.cls]??9));
+  $('saTbody').innerHTML = rows.length ? rows.map(r=>`<tr>
+    <td><b>${esc(r.inst.instName || r.school.jina || '(bila jina)')}</b><div class="small">${esc(r.inst.emails.join(', '))}</div></td>
+    <td><span class="pill ${r.info.cls}">${esc(r.info.label)}</span></td>
+    <td>${r.pending.length ? r.pending.map(p=>`<div class="small">📌 ${esc(p.ref)} ${p.note?'— '+esc(p.note):''} <span class="small">(${esc((p.submittedAt||'').slice(0,10))})</span></div>`).join('') : '<span class="small">—</span>'}</td>
+    <td class="row-actions"><button class="btn sm accent" onclick="saActivate('${r.inst.instId}')">✅ Washa</button><button class="btn sm danger" onclick="saDeactivate('${r.inst.instId}')">⛔ Zima</button></td>
+  </tr>`).join('') : '<tr><td colspan="4" class="empty">Hakuna taasisi bado.</td></tr>';
+}
+async function saActivate(instId){
+  const months = parseInt(prompt('Amelipia miezi mingapi?','1'))||1;
+  const school = await readKey(instId,'school'); if(!school){ alert('Imeshindwa kusoma taarifa za taasisi.'); return; }
+  const sub = school.subscription || {status:'trial', trialStart:new Date().toISOString(), activatedUntil:null, payments:[]};
+  const now = new Date();
+  const base = (sub.status==='active' && sub.activatedUntil && new Date(sub.activatedUntil)>now) ? new Date(sub.activatedUntil) : now;
+  base.setDate(base.getDate() + 30*months);
+  sub.status='active'; sub.activatedUntil = base.toISOString();
+  (sub.payments||[]).forEach(p=>{ if(p.status==='pending'){ p.status='confirmed'; p.confirmedAt=new Date().toISOString(); } });
+  school.subscription = sub;
+  await window.storage.set('inst_'+instId+':school', JSON.stringify(school), true);
+  await renderSuperAdmin(); alert('Taasisi imewashwa kwa miezi '+months+'.');
+}
+async function saDeactivate(instId){
+  if(!confirm('Una uhakika unataka kuzima taasisi hii? Watumiaji wake hawataweza kutumia mfumo mpaka uiwashe tena.')) return;
+  const school = await readKey(instId,'school'); if(!school) return;
+  school.subscription = Object.assign({payments:[]}, school.subscription||{}, {status:'off'});
+  await window.storage.set('inst_'+instId+':school', JSON.stringify(school), true);
+  await renderSuperAdmin();
 }
 
 loadAll();
