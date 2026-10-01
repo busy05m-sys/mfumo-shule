@@ -1141,7 +1141,7 @@ function normalizeDB(db){
   if(!db.school.offeredClasses) db.school.offeredClasses = [];
   return db;
 }
-const NGAZI_OPTS = ["Awali","Msingi (Primary)","Pre-Form One","Sekondari (Secondary)","Stashahada (Diploma)","Shahada (Degree)","Chuo Kikuu"];
+const NGAZI_OPTS = ["Nursery","Awali","Msingi (Primary)","Pre-Form One","Sekondari (Secondary)","Stashahada (Diploma)","Shahada (Degree)","Chuo Kikuu"];
 const MONTHS = ["Januari","Februari","Machi","Aprili","Mei","Juni","Julai","Agosti","Septemba","Oktoba","Novemba","Desemba"];
 const ROLES = ["Msimamizi Mkuu","Mkuu wa Shule/Chuo","Naibu Mkuu/Makamu Mkuu","Discipline Master","Warden","Mwalimu","Mhasibu"];
 const ADMIN_ROLES = ["Msimamizi Mkuu","Mkuu wa Shule/Chuo"];
@@ -3294,13 +3294,17 @@ function barcodeSVG(text, height){
 
 // ================= MADARASA, MASOMO NA SILABASI (chaguo-msingi) =================
 const CLASS_GROUPS=[
+ {kundi:'Nursery',ngazi:'Nursery',madarasa:['Nursery 1','Nursery 2']},
  {kundi:'Awali',ngazi:'Awali',madarasa:['Awali 1','Awali 2']},
  {kundi:'Shule ya Msingi',ngazi:'Msingi (Primary)',madarasa:[1,2,3,4,5,6,7].map(n=>'Darasa la '+n)},
  {kundi:'Pre-Form One',ngazi:'Pre-Form One',madarasa:['Pre-Form One']},
  {kundi:'Sekondari (O-Level)',ngazi:'Sekondari (Secondary)',madarasa:['Form One','Form Two','Form Three','Form Four']},
- {kundi:'Sekondari (A-Level)',ngazi:'Sekondari (Secondary)',madarasa:['Form Five','Form Six']}
+ {kundi:'Sekondari (A-Level)',ngazi:'Sekondari (Secondary)',madarasa:['Form Five','Form Six']},
+ {kundi:'Chuo (College)',ngazi:'Stashahada (Diploma)',madarasa:['Cheti Mwaka 1','Cheti Mwaka 2','Stashahada Mwaka 1','Stashahada Mwaka 2','Stashahada Mwaka 3']},
+ {kundi:'Chuo Kikuu (University)',ngazi:'Chuo Kikuu',madarasa:['Mwaka wa Kwanza','Mwaka wa Pili','Mwaka wa Tatu','Mwaka wa Nne','Mwaka wa Tano']}
 ];
-const CLS={AW:CLASS_GROUPS[0].madarasa,P:CLASS_GROUPS[1].madarasa,P3:CLASS_GROUPS[1].madarasa.slice(2),PF:['Pre-Form One'],O:CLASS_GROUPS[3].madarasa,A:CLASS_GROUPS[4].madarasa};
+const cgFind=k=>CLASS_GROUPS.find(g=>g.kundi===k).madarasa;
+const CLS={NU:cgFind('Nursery'),AW:cgFind('Awali'),P:cgFind('Shule ya Msingi'),P3:cgFind('Shule ya Msingi').slice(2),PF:['Pre-Form One'],O:cgFind('Sekondari (O-Level)'),A:cgFind('Sekondari (A-Level)'),CH:cgFind('Chuo (College)'),CK:cgFind('Chuo Kikuu (University)')};
 const ALL_CLASSES=CLASS_GROUPS.flatMap(g=>g.madarasa);
 const NUMW={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,moja:1,mbili:2,tatu:3,nne:4,tano:5,sita:6,saba:7,i:1,ii:2,iii:3,iv:4,v:5,vi:6,vii:7};
 function numTok(x){ const d=String(x).match(/^\d+/); if(d) return parseInt(d[0]); return NUMW[x]||NUMW[String(x).replace(/[a-z]$/,'')]||0; }
@@ -3310,7 +3314,7 @@ function normClass(c){
   if(/^pre ?form/.test(t)) return 'pre-form one';
   let m=t.match(/^(?:form|kidato(?: cha)?|f)\s*([a-z0-9]+)/); if(m){ const n=numTok(m[1]); if(n) return 'form '+n; }
   m=t.match(/^(?:darasa(?: la)?|std|standard|class|grade|d)\s*([a-z0-9]+)/); if(m){ const n=numTok(m[1]); if(n) return 'darasa '+n; }
-  m=t.match(/^(?:awali|nursery|pre ?primary|chekechea)\s*([a-z0-9]*)/); if(m) return 'awali '+(numTok(m[1])||1);
+  m=t.match(/^(?:awali|pre ?primary|chekechea)\s*([a-z0-9]*)/); if(m) return 'awali '+(numTok(m[1])||1);
   return t;
 }
 function sameClass(a,b){ const x=normClass(a), y=normClass(b); return !!x && x===y; }
@@ -4254,19 +4258,25 @@ function printPmtList(){
 // ===== v6 (billing/superadmin/levels) =====
 // ================= NGAZI YA UONEKANI (LEVEL VISIBILITY) =================
 const LEVEL_GROUPS = [
+  {key:'nursery', label:'Nursery', test:s=>s.ngazi==='Nursery'},
   {key:'awali', label:'Awali', test:s=>s.ngazi==='Awali'},
   {key:'msingi', label:'Msingi (Darasa 1-7 / Primary)', test:s=>s.ngazi==='Msingi (Primary)'},
   {key:'preform', label:'Pre-Form One', test:s=>s.ngazi==='Pre-Form One'},
   {key:'sekondari_o', label:'Sekondari (Form 1-4)', test:s=>s.ngazi==='Sekondari (Secondary)' && ['Form One','Form Two','Form Three','Form Four'].some(f=>sameClass(s.darasa,f))},
-  {key:'sekondari_a', label:'A-Level (Form 5-6)', test:s=>s.ngazi==='Sekondari (Secondary)' && ['Form Five','Form Six'].some(f=>sameClass(s.darasa,f))}
+  {key:'sekondari_a', label:'A-Level (Form 5-6)', test:s=>s.ngazi==='Sekondari (Secondary)' && ['Form Five','Form Six'].some(f=>sameClass(s.darasa,f))},
+  {key:'chuo', label:'Chuo (College)', test:s=>s.ngazi==='Stashahada (Diploma)'},
+  {key:'chuokikuu', label:'Chuo Kikuu (University)', test:s=>s.ngazi==='Chuo Kikuu'||s.ngazi==='Shahada (Degree)'}
 ];
 function levelKeyForClass(c){
   const nc = normClass(c);
-  if(CLASS_GROUPS[0].madarasa.some(m=>normClass(m)===nc)) return 'awali';
-  if(CLASS_GROUPS[1].madarasa.some(m=>normClass(m)===nc)) return 'msingi';
+  if(cgFind('Nursery').some(m=>normClass(m)===nc)) return 'nursery';
+  if(cgFind('Awali').some(m=>normClass(m)===nc)) return 'awali';
+  if(cgFind('Shule ya Msingi').some(m=>normClass(m)===nc)) return 'msingi';
   if(nc==='pre-form one') return 'preform';
   if(['form 1','form 2','form 3','form 4'].includes(nc)) return 'sekondari_o';
   if(['form 5','form 6'].includes(nc)) return 'sekondari_a';
+  if(cgFind('Chuo (College)').some(m=>normClass(m)===nc)) return 'chuo';
+  if(cgFind('Chuo Kikuu (University)').some(m=>normClass(m)===nc)) return 'chuokikuu';
   return null;
 }
 function userCanSeeStudent(u, s){
@@ -4415,34 +4425,66 @@ async function saActivate(instId){
   const school = await readKey(instId,'school'); if(!school){ alert('Imeshindwa kusoma taarifa za taasisi.'); return; }
   const sub = school.subscription || {status:'trial', trialStart:null, activatedUntil:null, payments:[]};
   const now = new Date();
+  const unlimited = sub.status==='active' && !sub.activatedUntil;
   const curUntil = (sub.status==='active' && sub.activatedUntil && new Date(sub.activatedUntil)>now) ? sub.activatedUntil.slice(0,10) : null;
   const pending = (sub.payments||[]).filter(p=>p.status==='pending');
+  const todayS = todayStr();
   openGM('Chagua Muda wa Kufikia Mfumo — '+(school.jina||instId), `
-    ${curUntil?`<p class="small">Tayari ana ufikiaji hadi <b>${esc(curUntil)}</b> — muda mpya utaongezwa baada ya tarehe hiyo.</p>`:''}
+    ${unlimited?`<p class="small">⚠️ Taasisi hii kwa sasa ni <b>Hai bila kikomo</b>. Ukiweka muda hapa, itabadilika kuwa na ukomo kulingana na ulichochagua.</p>`:''}
+    ${curUntil?`<p class="small">Tayari ana ufikiaji hadi <b>${esc(curUntil)}</b> — chaguo la "Idadi ya Miezi" litaongeza juu ya tarehe hiyo; chaguo la "Tarehe Mahususi" litabadilisha moja kwa moja.</p>`:''}
     ${pending.length?`<p class="small">📌 Kumbukumbu za malipo zinazosubiri: ${pending.map(p=>esc(p.ref)).join(', ')}</p>`:''}
-    <div class="field"><label>Muda wa Ufikiaji</label>
-      <select id="saMonths" onchange="document.getElementById('saCustomWrap').style.display=this.value==='custom'?'block':'none'">
-        ${SA_DURATIONS.map(d=>`<option value="${d.months}">${esc(d.label)}</option>`).join('')}
-        <option value="custom">Idadi Nyingine ya Miezi...</option>
-      </select>
+    <div class="field"><label>Njia ya Kuweka Muda</label>
+      <label class="chip-check"><input type="radio" name="saMode" value="months" checked onchange="saToggleMode()"> Idadi ya Miezi</label>
+      <label class="chip-check"><input type="radio" name="saMode" value="dates" onchange="saToggleMode()"> 📅 Chagua Tarehe Mahususi (Kalenda)</label>
     </div>
-    <div class="field" id="saCustomWrap" style="display:none"><label>Idadi ya Miezi</label><input type="number" id="saCustomMonths" min="1" value="1"></div>
-    <button class="btn accent" onclick="saConfirmActivate('${instId}')">✅ Washa Sasa</button>`);
+    <div id="saMonthsWrap">
+      <div class="field"><label>Muda wa Ufikiaji</label>
+        <select id="saMonths" onchange="document.getElementById('saCustomWrap').style.display=this.value==='custom'?'block':'none'">
+          ${SA_DURATIONS.map(d=>`<option value="${d.months}">${esc(d.label)}</option>`).join('')}
+          <option value="custom">Idadi Nyingine ya Miezi...</option>
+        </select>
+      </div>
+      <div class="field" id="saCustomWrap" style="display:none"><label>Idadi ya Miezi</label><input type="number" id="saCustomMonths" min="1" value="1"></div>
+    </div>
+    <div id="saDatesWrap" style="display:none">
+      <div class="grid g2">
+        <div class="field"><label>Kuanzia</label><input type="date" id="saFromDate" value="${todayS}"></div>
+        <div class="field"><label>Hadi</label><input type="date" id="saToDate"></div>
+      </div>
+    </div>
+    <button class="btn accent" style="margin-top:8px" onclick="saConfirmActivate('${instId}')">✅ Washa Sasa</button>`);
+}
+function saToggleMode(){
+  const mode = document.querySelector('input[name="saMode"]:checked').value;
+  $('saMonthsWrap').style.display = mode==='months' ? 'block' : 'none';
+  $('saDatesWrap').style.display = mode==='dates' ? 'block' : 'none';
 }
 async function saConfirmActivate(instId){
-  const sel = $('saMonths').value;
-  const months = sel==='custom' ? (parseInt($('saCustomMonths').value)||1) : parseInt(sel);
+  const mode = document.querySelector('input[name="saMode"]:checked').value;
   const school = await readKey(instId,'school'); if(!school){ alert('Imeshindwa kusoma taarifa za taasisi.'); return; }
   const sub = school.subscription || {status:'trial', trialStart:null, activatedUntil:null, payments:[]};
   const now = new Date();
-  const base = (sub.status==='active' && sub.activatedUntil && new Date(sub.activatedUntil)>now) ? new Date(sub.activatedUntil) : now;
-  base.setDate(base.getDate() + 30*months);
-  sub.status='active'; sub.activatedUntil = base.toISOString();
+  let untilDate, label;
+  if(mode==='dates'){
+    const f = $('saFromDate').value, t = $('saToDate').value;
+    if(!t){ alert('Chagua tarehe ya mwisho ya ufikiaji.'); return; }
+    if(f && f>t){ alert('Tarehe ya mwisho lazima iwe baada ya (au sawa na) tarehe ya kuanzia.'); return; }
+    untilDate = new Date(t+'T23:59:59');
+    if(f) sub.activatedFrom = f;
+    label = 'kuanzia '+(f||'leo')+' hadi '+t;
+  } else {
+    const sel = $('saMonths').value;
+    const months = sel==='custom' ? (parseInt($('saCustomMonths').value)||1) : parseInt(sel);
+    const base = (sub.status==='active' && sub.activatedUntil && new Date(sub.activatedUntil)>now) ? new Date(sub.activatedUntil) : now;
+    base.setDate(base.getDate() + 30*months);
+    untilDate = base; label = 'miezi '+months;
+  }
+  sub.status='active'; sub.activatedUntil = untilDate.toISOString();
   (sub.payments||[]).forEach(p=>{ if(p.status==='pending'){ p.status='confirmed'; p.confirmedAt=new Date().toISOString(); } });
   school.subscription = sub;
   await window.storage.set('inst_'+instId+':school', JSON.stringify(school), true);
   closeModal('genericModal');
-  await renderSuperAdmin(); alert('Taasisi "'+(school.jina||instId)+'" imewashwa hadi '+base.toISOString().slice(0,10)+' (miezi '+months+').');
+  await renderSuperAdmin(); alert('Taasisi "'+(school.jina||instId)+'" imewashwa ('+label+'), hai hadi '+untilDate.toISOString().slice(0,10)+'.');
 }
 async function saDeactivate(instId){
   if(!confirm('Una uhakika unataka kuzima taasisi hii? Watumiaji wake hawataweza kutumia mfumo mpaka uiwashe tena.')) return;
