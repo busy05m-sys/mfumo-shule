@@ -249,6 +249,7 @@ window.FIREBASE_CONFIG = {
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" defer></script>
 <script>
 // ============================================================
 // KIUNGANISHI CHA FIREBASE (kinachochukua nafasi ya window.storage
@@ -4249,30 +4250,55 @@ function sfCompressImage(dataUrl, maxW){
     img.src = dataUrl;
   });
 }
+const SF_DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+function sfKind(file){
+  if(file.type === 'application/pdf') return 'pdf';
+  if(file.type.startsWith('image/')) return 'img';
+  if(file.type === SF_DOCX_MIME || /\.docx$/i.test(file.name)) return 'docx';
+  if(file.type === 'application/msword' || /\.doc$/i.test(file.name)) return 'olddoc';
+  return null;
+}
+function sfDataUrlToArrayBuffer(dataUrl){
+  const b64 = dataUrl.slice(dataUrl.indexOf(',')+1);
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
 async function sfUpload(slot, inputId){
   const inp = $(inputId); const file = inp.files && inp.files[0]; if(!file){ return; }
-  const isPdf = file.type === 'application/pdf';
-  const isImg = file.type.startsWith('image/');
-  if(!isPdf && !isImg){ alert('Tumia picha (JPG/PNG) au faili la PDF pekee.'); inp.value=''; return; }
+  const kind = sfKind(file);
+  if(kind === 'olddoc'){ alert('Faili la aina ".doc" ya zamani halitumiki. Fungua Word, bofya "Save As" kisha chagua ".docx", kisha pakia hilo.'); inp.value=''; return; }
+  if(!kind){ alert('Tumia picha (JPG/PNG), PDF, au Word (.docx) pekee.'); inp.value=''; return; }
   let dataUrl = await sfReadAsDataURL(file);
-  if(isImg){ dataUrl = await sfCompressImage(dataUrl, 1400); }
+  if(kind === 'img'){ dataUrl = await sfCompressImage(dataUrl, 1400); }
   if(dataUrl.length*0.75 > SF_MAXBYTES){
-    if(isPdf){ alert('Faili la PDF ni kubwa mno (zaidi ya ~700KB). Tumia skana ya ubora wa chini kidogo, au badilisha kuwa picha (JPG) kisha pakia.'); inp.value=''; return; }
+    if(kind === 'docx'){ alert('Faili la Word ni kubwa mno (zaidi ya ~700KB) — huenda lina picha nyingi ndani yake. Ondoa picha zisizo za lazima kwenye Word kisha jaribu tena.'); inp.value=''; return; }
+    if(kind === 'pdf'){ alert('Faili la PDF ni kubwa mno (zaidi ya ~700KB). Tumia skana ya ubora wa chini kidogo, badilisha kuwa picha (JPG), au tumia Word (.docx) ambayo kwa kawaida ni ndogo zaidi.'); inp.value=''; return; }
     alert('Picha bado ni kubwa baada ya kubana. Jaribu picha nyingine.'); inp.value=''; return;
   }
+  const mime = kind==='pdf'?'application/pdf':kind==='docx'?SF_DOCX_MIME:'image/jpeg';
   DB.schoolForms = DB.schoolForms || {admissionForm:null, admissionLetter:null};
-  DB.schoolForms[slot] = {name:file.name, mime:isPdf?'application/pdf':'image/jpeg', data:dataUrl, uploadedAt:new Date().toISOString(), by:currentUser.jina};
+  DB.schoolForms[slot] = {name:file.name, mime, data:dataUrl, uploadedAt:new Date().toISOString(), by:currentUser.jina};
   await persist(); inp.value=''; renderSchoolForms(); await logAction('ongeza','Fomu za Shule', (slot==='admissionForm'?'Fomu ya Kujiunga':'Barua ya Kudahiliwa')+' imepakiwa: '+file.name);
 }
 async function sfRemove(slot){
   if(!confirm('Futa faili hili lililopakiwa?')) return;
   DB.schoolForms[slot] = null; await persist(); renderSchoolForms();
 }
-function sfOpenPrint(slot){
+async function sfOpenPrint(slot){
   const f = (DB.schoolForms||{})[slot]; if(!f){ alert('Bado hakuna faili lililopakiwa.'); return; }
   if(f.mime === 'application/pdf'){
     const w = window.open(); if(w){ w.document.write(`<iframe src="${f.data}" style="border:0;width:100%;height:100vh"></iframe>`); w.document.title = f.name; }
     else alert('Kivinjari kimezuia dirisha jipya. Ruhusu pop-up kisha jaribu tena.');
+    return;
+  }
+  if(f.mime === SF_DOCX_MIME){
+    if(typeof mammoth === 'undefined'){ alert('Kiunganishi cha kusoma Word bado kinapakia, subiri sekunde chache kisha jaribu tena.'); return; }
+    try{
+      const result = await mammoth.convertToHtml({arrayBuffer: sfDataUrlToArrayBuffer(f.data)});
+      $('formPrint').innerHTML = `<div style="max-width:720px;margin:0 auto;color:#000">${result.value}</div>`;
+      printSection('formPrint', f.name);
+    }catch(e){ alert('Imeshindwa kusoma faili hili la Word. Jaribu kulihifadhi upya kama .docx kutoka Word kisha pakia tena.'); }
     return;
   }
   $('formPrint').innerHTML = `<div style="text-align:center"><img src="${f.data}" style="max-width:100%"></div>`;
@@ -4290,10 +4316,11 @@ function renderSchoolForms(){
       <b>${esc(label)}</b><div class="small" style="margin-bottom:6px">${esc(help)}</div>
       ${f ? `<div class="row-actions" style="flex-wrap:wrap"><span class="pill good">📎 ${esc(f.name)}</span><button class="btn sm ghost" onclick="sfOpenPrint('${slot}')">🖨️ Fungua/Chapisha</button>${delOk?`<button class="btn sm danger" onclick="sfRemove('${slot}')">Futa</button>`:''}</div>`
           : `<span class="small">Bado hakuna faili lililopakiwa.</span>`}
-      ${editable ? `<div style="margin-top:8px"><input type="file" id="sfIn_${slot}" accept="image/*,application/pdf" onchange="sfUpload('${slot}','sfIn_${slot}')"></div>` : ''}
+      ${editable ? `<div style="margin-top:8px"><input type="file" id="sfIn_${slot}" accept="image/*,application/pdf,.docx,${SF_DOCX_MIME}" onchange="sfUpload('${slot}','sfIn_${slot}')"></div>` : ''}
     </div>`;
   };
   wrap.innerHTML = `
+    <p class="small">📎 Unaweza kupakia <b>picha (JPG/PNG)</b>, <b>PDF</b>, au <b>Word (.docx)</b>. Word kwa kawaida ni ndogo zaidi kuliko PDF iliyochanganuliwa (scanned) — tumia hiyo kama PDF yako ni kubwa mno.</p>
     <div class="field">
       <label style="margin-bottom:6px">Fomu ya Kujiunga Itakayotumika Kuchapishwa</label>
       <label class="chip-check"><input type="radio" name="sfSrc" value="default" ${src!=='custom'?'checked':''} ${editable?'':'disabled'} onchange="setFormSource('default')"> Fomu ya Mfumo (inajiunga na Mahitaji + Malipo kiotomatiki)</label>
