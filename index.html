@@ -407,7 +407,6 @@ Minimum version required to store current data is: `+i+`.
     <button class="nav-btn" data-page="students"><span class="nav-emoji">🎓</span>Wanafunzi</button>
     <button class="nav-btn" data-page="academics"><span class="nav-emoji">📝</span>Mitihani &amp; Alama</button>
     <button class="nav-btn" data-page="subjects"><span class="nav-emoji">📚</span>Masomo &amp; Silabasi</button>
-    <button class="nav-btn" data-page="preform"><span class="nav-emoji">🎒</span>Pre-Form One</button>
     <button class="nav-btn" data-page="calendar"><span class="nav-emoji">📆</span>Kalenda ya Mwaka</button>
     <button class="nav-btn" data-page="timetable"><span class="nav-emoji">🕒</span>Ratiba ya Vipindi</button>
     <button class="nav-btn" data-page="attendance"><span class="nav-emoji">🗓️</span>Mahudhurio</button>
@@ -511,11 +510,30 @@ Minimum version required to store current data is: `+i+`.
         <div class="card"><div id="stuClassGrid"></div></div>
       </div>
       <div id="stu-roster" style="display:none">
-        <div class="card" id="stuBulkCard"></div>
-        <div class="card">
-          <input class="searchbar" placeholder="Tafuta mwanafunzi kwa jina..." oninput="renderStudentTable(this.value)">
-          <table><thead><tr><th>Jina</th><th>Ngazi/Darasa</th><th>Mzazi</th><th>Simu ya Mzazi</th><th>Anaishi</th><th></th></tr></thead>
-          <tbody id="studentTbody"></tbody></table>
+        <div class="tabbar" id="pfTabs"></div>
+        <div id="pf-students">
+          <div class="stat-cards" id="pfStats"></div>
+          <div class="card"><div class="row-actions" style="flex-wrap:wrap">
+            <button class="btn" onclick="openStudentModal(null,stuClass)">+ Msajili Mwanafunzi</button>
+            <button class="btn ghost" onclick="pfLoadSubjects()" id="pfLoadSubjBtn">📚 Weka Masomo</button>
+            <button class="btn ghost" onclick="pfCreateExam()">📝 Unda Mtihani</button>
+            <button class="btn ghost" onclick="document.querySelector('.nav-btn[data-page=admissions]').click()">📥 Maombi/Fomu ya Kujiunga</button>
+          </div></div>
+          <div class="card" id="stuBulkCard"></div>
+          <div class="card">
+            <input class="searchbar" placeholder="Tafuta mwanafunzi kwa jina..." oninput="renderStudentTable(this.value)">
+            <table><thead><tr><th>Jina</th><th>Ngazi/Darasa</th><th>Mzazi</th><th>Simu ya Mzazi</th><th>Anaishi</th><th></th></tr></thead>
+            <tbody id="studentTbody"></tbody></table>
+          </div>
+        </div>
+        <div id="pf-results" style="display:none"><div class="card"><div class="grid g3"><div class="field"><label>Mtihani</label><select id="pfExam" onchange="renderPfResultsPick()"></select></div><div class="field" style="align-self:end"><button class="btn ghost" onclick="pfPrintResults()">🖨️ Chapisha Ripoti</button></div></div><div id="pfResultsOut"></div></div></div>
+        <div id="pf-cert" style="display:none">
+          <div class="card"><h3>Vigezo vya Cheti cha Kuhitimu</h3><div class="grid g3">
+            <div class="field"><label>Msingi wa Wastani</label><select id="pfcBasis" onchange="renderPfCert()"></select></div><div class="field"><label>Kiwango cha Kufaulu (%)</label><input type="number" id="pfcPass" onchange="renderPfCert()"></div><div class="field"><label>Tarehe ya Kuhitimu</label><input type="date" id="pfcDate"></div>
+            <div class="field"><label>Jina la Mkuu wa Shule/Chuo</label><input id="pfcHead"></div><div class="field"><label>Jina la Mwalimu wa Taaluma</label><input id="pfcAcad"></div><div class="field" style="align-self:end"><button class="btn accent" onclick="pfIssueAll()">🏅 Toa &amp; Chapisha Vyeti vya Wote Wanaostahili</button></div></div></div>
+          <div class="card"><table><thead><tr><th>Mwanafunzi</th><th>Wastani</th><th>Daraja</th><th>Hali</th><th></th></tr></thead><tbody id="pfCertTbody"></tbody></table></div>
+          <div class="card"><h3>Thibitisha Cheti (scan QR au andika namba)</h3><div class="grid g3"><div class="field"><input id="pfVerifyIn" placeholder="Mf: CHT-PF1-2026-0001"></div><div class="field"><button class="btn" onclick="pfVerify()">Thibitisha</button></div></div><div id="pfVerifyOut"></div></div>
+          <div class="card"><h3>Vyeti Vilivyotolewa</h3><table><thead><tr><th>Cheti Na.</th><th>Mwanafunzi</th><th>Wastani</th><th>Tarehe</th><th>Kimetolewa na</th></tr></thead><tbody id="pfIssuedTbody"></tbody></table></div>
         </div>
       </div>
     </div>
@@ -925,23 +943,6 @@ Said Kassim|Mlinzi"></textarea>
     </div>
 
     <!-- PRE-FORM ONE -->
-    <div class="page" id="page-preform">
-      <div class="page-header"><div><h1>Pre-Form One</h1><p>Kozi ya maandalizi ya Form One: wanafunzi, ripoti ya matokeo na cheti cha kuhitimu</p></div></div>
-      <div class="tabbar" id="pfTabs"></div>
-      <div id="pf-students"><div class="stat-cards" id="pfStats"></div>
-        <div class="card"><div class="row-actions" style="flex-wrap:wrap"><button class="btn" onclick="pfAddStudent()">+ Msajili Mwanafunzi</button><button class="btn ghost" onclick="pfLoadSubjects()">📚 Weka Masomo ya Pre-Form One</button><button class="btn ghost" onclick="pfCreateExam()">📝 Unda Mtihani</button><button class="btn ghost" onclick="document.querySelector('.nav-btn[data-page=admissions]').click()">📥 Maombi/Fomu ya Kujiunga</button></div></div>
-        <div class="card"><table><thead><tr><th>Mwanafunzi</th><th>Mzazi</th><th>Simu</th><th>Aina</th><th></th></tr></thead><tbody id="pfStudentsTbody"></tbody></table></div></div>
-      <div id="pf-results" style="display:none"><div class="card"><div class="grid g3"><div class="field"><label>Mtihani</label><select id="pfExam" onchange="renderPfResultsPick()"></select></div><div class="field" style="align-self:end"><button class="btn ghost" onclick="pfPrintResults()">🖨️ Chapisha Ripoti</button></div></div><div id="pfResultsOut"></div></div></div>
-      <div id="pf-cert" style="display:none">
-        <div class="card"><h3>Vigezo vya Cheti cha Kuhitimu</h3><div class="grid g3">
-          <div class="field"><label>Msingi wa Wastani</label><select id="pfcBasis" onchange="renderPfCert()"></select></div><div class="field"><label>Kiwango cha Kufaulu (%)</label><input type="number" id="pfcPass" onchange="renderPfCert()"></div><div class="field"><label>Tarehe ya Kuhitimu</label><input type="date" id="pfcDate"></div>
-          <div class="field"><label>Jina la Mkuu wa Shule/Chuo</label><input id="pfcHead"></div><div class="field"><label>Jina la Mwalimu wa Taaluma</label><input id="pfcAcad"></div><div class="field" style="align-self:end"><button class="btn accent" onclick="pfIssueAll()">🏅 Toa &amp; Chapisha Vyeti vya Wote Wanaostahili</button></div></div></div>
-        <div class="card"><table><thead><tr><th>Mwanafunzi</th><th>Wastani</th><th>Daraja</th><th>Hali</th><th></th></tr></thead><tbody id="pfCertTbody"></tbody></table></div>
-        <div class="card"><h3>Thibitisha Cheti (scan barcode au andika namba)</h3><div class="grid g3"><div class="field"><input id="pfVerifyIn" placeholder="CHT-PF1-2026-0001"></div><div class="field"><button class="btn" onclick="pfVerify()">Thibitisha</button></div></div><div id="pfVerifyOut"></div></div>
-        <div class="card"><h3>Vyeti Vilivyotolewa</h3><table><thead><tr><th>Cheti Na.</th><th>Mwanafunzi</th><th>Wastani</th><th>Tarehe</th><th>Kimetolewa na</th></tr></thead><tbody id="pfIssuedTbody"></tbody></table></div>
-      </div>
-    </div>
-
     <!-- ADMISSIONS -->
     <div class="page" id="page-admissions">
       <div class="page-header"><div><h1>Maombi ya Kujiunga</h1><p>Fomu ya kujiunga na shule (Pre-Form One na ngazi zote): mahitaji, malipo na akaunti</p></div></div>
@@ -1141,7 +1142,7 @@ function normalizeDB(db){
   if(!db.school.offeredClasses) db.school.offeredClasses = [];
   return db;
 }
-const NGAZI_OPTS = ["Nursery","Awali","Msingi (Primary)","Pre-Form One","Sekondari (Secondary)","Stashahada (Diploma)","Shahada (Degree)","Chuo Kikuu"];
+const NGAZI_OPTS = ["Awali","Msingi (Primary)","Pre-Form One","Sekondari (Secondary)","Stashahada (Diploma)","Shahada (Degree)","Chuo Kikuu"];
 const MONTHS = ["Januari","Februari","Machi","Aprili","Mei","Juni","Julai","Agosti","Septemba","Oktoba","Novemba","Desemba"];
 const ROLES = ["Msimamizi Mkuu","Mkuu wa Shule/Chuo","Naibu Mkuu/Makamu Mkuu","Discipline Master","Warden","Mwalimu","Mhasibu"];
 const ADMIN_ROLES = ["Msimamizi Mkuu","Mkuu wa Shule/Chuo"];
@@ -1160,7 +1161,6 @@ const PAGE_PERMS = [
   {key:'payroll', label:'Mishahara (Payroll)'},
   {key:'parentreports', label:'Ripoti za Wazazi'},
   {key:'timetable', label:'Ratiba ya Vipindi'},
-  {key:'preform', label:'Pre-Form One'},
   {key:'admissions', label:'Maombi ya Kujiunga'},
   {key:'calendar', label:'Kalenda ya Mwaka'},
   {key:'teacherperf', label:'Utendaji wa Walimu'},
@@ -1172,10 +1172,10 @@ const PAGE_PERMS = [
 const ROLE_DEFAULT_PERMS = {
   "Msimamizi Mkuu": PAGE_PERMS.map(p=>p.key),
   "Mkuu wa Shule/Chuo": PAGE_PERMS.map(p=>p.key),
-  "Naibu Mkuu/Makamu Mkuu": ['school','students','academics','subjects','attendance','duty','reports','needs','parentreports','timetable','preform','admissions','calendar','teacherperf','announcements','library','msg'],
+  "Naibu Mkuu/Makamu Mkuu": ['school','students','academics','subjects','attendance','duty','reports','needs','parentreports','timetable','admissions','calendar','teacherperf','announcements','library','msg'],
   "Discipline Master": ['students','attendance','duty','calendar','announcements','msg'],
   "Warden": ['students','needs','duty','calendar','announcements','msg'],
-  "Mwalimu": ['students','academics','subjects','attendance','duty','reports','parentreports','timetable','preform','calendar','teacherperf','announcements','library','msg'],
+  "Mwalimu": ['students','academics','subjects','attendance','duty','reports','parentreports','timetable','calendar','teacherperf','announcements','library','msg'],
   "Mhasibu": ['students','fees','payroll','finance','admissions','calendar','announcements','msg']
 };
 function defaultPermsForRole(role){ return (ROLE_DEFAULT_PERMS[role]||['msg']).slice(); }
@@ -1553,7 +1553,6 @@ function refreshPage(p){
   if(p==='payroll'){ fillStaffSelect('prStaff'); fillMonthSelect(); renderPayHistory(); }
   if(p==='backup') renderBackupPage();
   if(p==='subjects') renderSubjectsPage();
-  if(p==='preform') renderPreformPage();
   if(p==='admissions'){ renderAdmissionsPage(); renderSchoolForms(); }
   if(p==='calendar') renderCalendarPage();
   if(p==='teacherperf') renderTeacherPerfPage();
@@ -1690,7 +1689,7 @@ async function saveStudent(){
   DB.fees[id].ada_jumla = ada;
   await persist('fees');
   closeModal('studentModal');
-  renderStudentTable();
+  if(stuClass && $('stu-roster').style.display!=='none') renderPfTabs(); else renderStudentTable();
   alert('Taarifa za mwanafunzi zimehifadhiwa.');
 }
 let stuClass = '';
@@ -1706,20 +1705,13 @@ function renderStuClassPicker(){
     return `<div class="subj-row" style="cursor:pointer" onclick="openStuClass('${esc(c)}')"><div><b>${esc(c)}</b><div class="small">${n} ${n===1?'mwanafunzi':'wanafunzi'}</div></div><div class="row-actions"><span class="pill ${n?'good':'neutral'}">Fungua →</span></div></div>`;
   }).join('') : '<p class="empty">Bado hakuna darasa lililowekwa. Nenda "Taarifa za Shule" kuweka ngazi/madarasa mnayotolea huduma.</p>';
 }
-function openStuClass(c){ stuClass=c; renderStuRoster(); }
+function openStuClass(c){ stuClass=c; pfTab='students'; renderStuRoster(); }
 function backToStuClasses(){ stuClass=''; renderStuClassPicker(); }
 function renderStuRoster(){
   $('stu-classes').style.display='none'; $('stu-roster').style.display='block';
   $('stuSubtitle').innerHTML = `<a href="#" onclick="backToStuClasses();return false;">← Madarasa</a> &nbsp;·&nbsp; <b>${esc(stuClass)}</b>`;
-  $('stuHeaderActions').innerHTML = `<button class="btn" onclick="openStudentModal(null,'${esc(stuClass)}')">+ Msajili Mwanafunzi</button>`;
-  const canBulk = canEditData();
-  $('stuBulkCard').innerHTML = canBulk ? `<h3>📋 Pakia Majina kwa Wingi — ${esc(stuClass)}</h3>
-    <p class="small">Jina moja kwa mstari. Jinsia ni hiari baada ya "|" (M/Mvulana au K/Msichana), mfano: <code>Juma Ali|M</code></p>
-    <textarea id="stuBulkText" rows="5" style="width:100%;font-family:monospace" placeholder="Juma Ali|M
-Asha Said|K
-Rehema Yusuf"></textarea>
-    <button class="btn" style="margin-top:6px" onclick="stuBulkAdd()">Ongeza Wote kwenye ${esc(stuClass)}</button>` : '';
-  renderStudentTable();
+  $('stuHeaderActions').innerHTML = '';
+  renderPfTabs();
 }
 async function stuBulkAdd(){
   const lines = ($('stuBulkText').value||'').split('\n').map(l=>l.trim()).filter(Boolean);
@@ -1732,7 +1724,7 @@ async function stuBulkAdd(){
     DB.students.push({id:uid()+idx, jina, regNo:nextRegNo(), jinsia, dob:'', ngazi:ng, darasa:stuClass, join:todayStr(), mzazi:{jina:'',simu:'',anaishi:''}, makazi:'', afya:'', bweni:false, mahitaji:{}});
     n++;
   });
-  await persist(); $('stuBulkText').value=''; renderStuRoster(); alert('Wanafunzi '+n+' wameongezwa kwenye '+stuClass+'.');
+  await persist(); $('stuBulkText').value=''; renderPfTabs(); alert('Wanafunzi '+n+' wameongezwa kwenye '+stuClass+'.');
 }
 function renderStudentTable(filter){
   const tb = document.getElementById('studentTbody');
@@ -1759,7 +1751,7 @@ async function deleteStudent(id){
   DB.students = DB.students.filter(s=>s.id!==id);
   delete DB.fees[id];
   await persist('students'); await persist('fees');
-  renderStudentTable();
+  if(stuClass && $('stu-roster').style.display!=='none') renderPfTabs(); else renderStudentTable();
 }
 function fillStudentSelect(id, ngazi){
   const sel = document.getElementById(id);
@@ -3294,8 +3286,7 @@ function barcodeSVG(text, height){
 
 // ================= MADARASA, MASOMO NA SILABASI (chaguo-msingi) =================
 const CLASS_GROUPS=[
- {kundi:'Nursery',ngazi:'Nursery',madarasa:['Nursery 1','Nursery 2']},
- {kundi:'Awali',ngazi:'Awali',madarasa:['Awali 1','Awali 2']},
+ {kundi:'Nursery/Awali',ngazi:'Awali',madarasa:['Awali 1','Awali 2']},
  {kundi:'Shule ya Msingi',ngazi:'Msingi (Primary)',madarasa:[1,2,3,4,5,6,7].map(n=>'Darasa la '+n)},
  {kundi:'Pre-Form One',ngazi:'Pre-Form One',madarasa:['Pre-Form One']},
  {kundi:'Sekondari (O-Level)',ngazi:'Sekondari (Secondary)',madarasa:['Form One','Form Two','Form Three','Form Four']},
@@ -3304,7 +3295,7 @@ const CLASS_GROUPS=[
  {kundi:'Chuo Kikuu (University)',ngazi:'Chuo Kikuu',madarasa:['Mwaka wa Kwanza','Mwaka wa Pili','Mwaka wa Tatu','Mwaka wa Nne','Mwaka wa Tano']}
 ];
 const cgFind=k=>CLASS_GROUPS.find(g=>g.kundi===k).madarasa;
-const CLS={NU:cgFind('Nursery'),AW:cgFind('Awali'),P:cgFind('Shule ya Msingi'),P3:cgFind('Shule ya Msingi').slice(2),PF:['Pre-Form One'],O:cgFind('Sekondari (O-Level)'),A:cgFind('Sekondari (A-Level)'),CH:cgFind('Chuo (College)'),CK:cgFind('Chuo Kikuu (University)')};
+const CLS={AW:cgFind('Nursery/Awali'),P:cgFind('Shule ya Msingi'),P3:cgFind('Shule ya Msingi').slice(2),PF:['Pre-Form One'],O:cgFind('Sekondari (O-Level)'),A:cgFind('Sekondari (A-Level)'),CH:cgFind('Chuo (College)'),CK:cgFind('Chuo Kikuu (University)')};
 const ALL_CLASSES=CLASS_GROUPS.flatMap(g=>g.madarasa);
 const NUMW={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,moja:1,mbili:2,tatu:3,nne:4,tano:5,sita:6,saba:7,i:1,ii:2,iii:3,iv:4,v:5,vi:6,vii:7};
 function numTok(x){ const d=String(x).match(/^\d+/); if(d) return parseInt(d[0]); return NUMW[x]||NUMW[String(x).replace(/[a-z]$/,'')]||0; }
@@ -3314,7 +3305,7 @@ function normClass(c){
   if(/^pre ?form/.test(t)) return 'pre-form one';
   let m=t.match(/^(?:form|kidato(?: cha)?|f)\s*([a-z0-9]+)/); if(m){ const n=numTok(m[1]); if(n) return 'form '+n; }
   m=t.match(/^(?:darasa(?: la)?|std|standard|class|grade|d)\s*([a-z0-9]+)/); if(m){ const n=numTok(m[1]); if(n) return 'darasa '+n; }
-  m=t.match(/^(?:awali|pre ?primary|chekechea)\s*([a-z0-9]*)/); if(m) return 'awali '+(numTok(m[1])||1);
+  m=t.match(/^(?:awali|nursery|pre ?primary|chekechea)\s*([a-z0-9]*)/); if(m) return 'awali '+(numTok(m[1])||1);
   return t;
 }
 function sameClass(a,b){ const x=normClass(a), y=normClass(b); return !!x && x===y; }
@@ -3606,32 +3597,43 @@ async function loadDefaultSyllabus(){
 }
 
 // ================= PRE-FORM ONE =================
-const PF='Pre-Form One'; let pfTab='students';
+let pfTab='students';
 function passMark(){ const v=parseFloat(DB.school.passMark); return isNaN(v)?40:v; }
-function pfStudents(){ return DB.students.filter(s=>s.ngazi===PF||sameClass(s.darasa,PF)); }
-function pfExams(){ return DB.exams.filter(e=>e.ngazi===PF||sameClass(e.darasa,PF)); }
+function classStudents(cls){ return DB.students.filter(s=>sameClass(s.darasa,cls)); }
+function classExams(cls){ return DB.exams.filter(e=>sameClass(e.darasa,cls)); }
 function mean(a){ return a.length? a.reduce((x,y)=>x+y,0)/a.length : 0; }
-function setPfTab(t){ pfTab=t; renderPreformPage(); }
-function renderPreformPage(){
+function setPfTab(t){ pfTab=t; renderPfTabs(); }
+function renderPfTabs(){
   $('pfTabs').innerHTML=[['students','🎓 Wanafunzi'],['results','📊 Ripoti ya Matokeo'],['cert','🏅 Vyeti vya Kuhitimu']].map(([k,l])=>`<button class="${pfTab===k?'active':''}" onclick="setPfTab('${k}')">${l}</button>`).join('');
   ['students','results','cert'].forEach(k=>$('pf-'+k).style.display=pfTab===k?'block':'none');
-  if(pfTab==='students') renderPfStudents(); else if(pfTab==='results') renderPfResultsPick(); else renderPfCert();
+  if(pfTab==='students'){ renderPfStats(); renderStuBulkCard(); renderStudentTable(); }
+  else if(pfTab==='results') renderPfResultsPick();
+  else renderPfCert();
 }
-function renderPfStudents(){
-  const st=pfStudents(), g=st.filter(s=>s.jinsia==='Msichana').length, b=st.filter(s=>s.bweni).length, subj=DB.subjects.filter(s=>sameClass(s.darasa,PF)).length;
-  $('pfStats').innerHTML=`<div class="stat"><div class="num">${st.length}</div><div class="lbl">Wanafunzi wa Pre-Form One</div></div><div class="stat"><div class="num">${g} / ${st.length-g}</div><div class="lbl">Wasichana / Wavulana</div></div><div class="stat"><div class="num">${b}</div><div class="lbl">Wa Bweni</div></div><div class="stat"><div class="num">${subj}</div><div class="lbl">Masomo yaliyopangwa</div></div>`;
-  $('pfStudentsTbody').innerHTML=st.length? st.map(s=>`<tr><td><b>${esc(s.jina)}</b><div class="small">${esc(s.regNo||'')} · ${esc(s.jinsia||'')}</div></td><td>${esc((s.mzazi&&s.mzazi.jina)||'-')}</td><td>${esc((s.mzazi&&s.mzazi.simu)||'-')}</td><td>${s.bweni?'Bweni':'Kutwa'}</td><td><button class="btn sm ghost" onclick="openStudentModal('${s.id}')">Hariri</button></td></tr>`).join('') : '<tr><td colspan="5" class="empty">Hakuna mwanafunzi wa Pre-Form One bado.</td></tr>';
+function renderStuBulkCard(){
+  const canBulk = canEditData();
+  $('stuBulkCard').innerHTML = canBulk ? `<h3>📋 Pakia Majina kwa Wingi — ${esc(stuClass)}</h3>
+    <p class="small">Jina moja kwa mstari. Jinsia ni hiari baada ya "|" (M/Mvulana au K/Msichana), mfano: <code>Juma Ali|M</code></p>
+    <textarea id="stuBulkText" rows="5" style="width:100%;font-family:monospace" placeholder="Juma Ali|M
+Asha Said|K
+Rehema Yusuf"></textarea>
+    <button class="btn" style="margin-top:6px" onclick="stuBulkAdd()">Ongeza Wote kwenye ${esc(stuClass)}</button>` : '';
 }
-function ensureNgazi(n){ if(DB.school.ngazi.length && !DB.school.ngazi.includes(n)){ DB.school.ngazi.push(n); persist(); } }
-function pfAddStudent(){ ensureNgazi(PF); openStudentModal(); $('stNgazi').value=PF; $('stDarasa').value=PF; }
+function renderPfStats(){
+  const st=classStudents(stuClass), g=st.filter(s=>s.jinsia==='Msichana').length, b=st.filter(s=>s.bweni).length, subj=DB.subjects.filter(s=>sameClass(s.darasa,stuClass)).length;
+  $('pfStats').innerHTML=`<div class="stat"><div class="num">${st.length}</div><div class="lbl">Wanafunzi wa ${esc(stuClass)}</div></div><div class="stat"><div class="num">${g} / ${st.length-g}</div><div class="lbl">Wasichana / Wavulana</div></div><div class="stat"><div class="num">${b}</div><div class="lbl">Wa Bweni</div></div><div class="stat"><div class="num">${subj}</div><div class="lbl">Masomo yaliyopangwa</div></div>`;
+  const btn=$('pfLoadSubjBtn'); if(btn) btn.textContent='📚 Weka Masomo ya '+stuClass;
+}
+function ensureNgazi(n){ if(n && DB.school.ngazi.length && !DB.school.ngazi.includes(n)){ DB.school.ngazi.push(n); persist(); } }
 async function pfCreateExam(){
-  const jina=prompt('Jina la mtihani:', 'Mtihani wa Mwisho wa Pre-Form One'); if(!jina) return;
-  ensureNgazi(PF); DB.exams.push({id:uid(),jina,aina:'muhula',ngazi:PF,darasa:PF,tarehe:todayStr()}); await persist();
+  const jina=prompt('Jina la mtihani:', 'Mtihani wa '+stuClass); if(!jina) return;
+  const ng=ngaziOfClass(stuClass)||''; ensureNgazi(ng);
+  DB.exams.push({id:uid(),jina,aina:'muhula',ngazi:ng,darasa:stuClass,tarehe:todayStr()}); await persist();
   alert('Mtihani umeundwa. Ingiza alama kwenye "Mitihani & Alama → Ingiza Alama".'); renderPfResultsPick();
 }
-async function pfLoadSubjects(){ await bulkAssign('PF'); renderPfStudents(); }
+async function pfLoadSubjects(){ await bulkAssignForClass(stuClass); renderPfStats(); }
 function renderPfResultsPick(){
-  const cur=$('pfExam').value; $('pfExam').innerHTML='<option value="">— chagua mtihani —</option>'+pfExams().map(e=>`<option value="${e.id}">${esc(e.jina)} (${esc(e.tarehe||'')})</option>`).join(''); if(cur) $('pfExam').value=cur;
+  const cur=$('pfExam').value; $('pfExam').innerHTML='<option value="">— chagua mtihani —</option>'+classExams(stuClass).map(e=>`<option value="${e.id}">${esc(e.jina)} (${esc(e.tarehe||'')})</option>`).join(''); if(cur) $('pfExam').value=cur;
   $('pfResultsOut').innerHTML = $('pfExam').value ? pfResultsHTML($('pfExam').value) : '<p class="small">Chagua mtihani ili kuona ripoti ya matokeo. Kama hakuna mtihani, bofya "Unda Mtihani".</p>';
 }
 function schoolHeadHTML(title, sub){
@@ -3640,20 +3642,20 @@ function schoolHeadHTML(title, sub){
 }
 function pfResultsHTML(examId){
   const ex=DB.exams.find(e=>e.id===examId); if(!ex) return '';
-  const rows=computeExamTotals(examId).filter(r=>r.student.ngazi===PF||sameClass(r.student.darasa,PF));
+  const rows=computeExamTotals(examId).filter(r=>sameClass(r.student.darasa,stuClass));
   if(!rows.length) return '<p class="empty">Hakuna alama zilizoingizwa kwa mtihani huu.</p>';
   const subs=[...new Set(rows.flatMap(r=>Object.keys(r.subjects)))]; const pm=passMark();
   const passN=rows.filter(r=>r.avg>=pm).length, avgAll=mean(rows.map(r=>r.avg));
   const sAvg=subs.map(s=>({s,a:mean(rows.map(r=>Number(r.subjects[s])).filter(x=>!isNaN(x)))})).sort((a,b)=>b.a-a.a);
-  return `<div id="pfResPrint">${schoolHeadHTML('Ripoti ya Matokeo — Pre-Form One', `${ex.jina}${ex.tarehe?' · '+ex.tarehe:''}${DB.school.mwakaMasomo?' · Mwaka '+DB.school.mwakaMasomo:''}`)}
+  return `<div id="pfResPrint">${schoolHeadHTML('Ripoti ya Matokeo — '+stuClass, `${ex.jina}${ex.tarehe?' · '+ex.tarehe:''}${DB.school.mwakaMasomo?' · Mwaka '+DB.school.mwakaMasomo:''}`)}
    <div class="stat-cards" style="grid-template-columns:repeat(4,1fr)"><div class="stat"><div class="num">${rows.length}</div><div class="lbl">Waliofanya mtihani</div></div><div class="stat"><div class="num">${fmt1(avgAll)}%</div><div class="lbl">Wastani wa darasa</div></div><div class="stat"><div class="num">${Math.round(passN/rows.length*100)}%</div><div class="lbl">Ufaulu (≥ ${pm}%)</div></div><div class="stat"><div class="num" style="font-size:16px">${esc(sAvg[0].s)}<br><span class="small">bora · ${fmt1(sAvg[0].a)}%</span></div><div class="lbl">Somo la chini: ${esc(sAvg[sAvg.length-1].s)} (${fmt1(sAvg[sAvg.length-1].a)}%)</div></div></div>
    <div class="table-scroll"><table><thead><tr><th>Nafasi</th><th>Jina</th><th>Na. Usajili</th>${subs.map(s=>`<th>${esc(s)}</th>`).join('')}<th>Jumla</th><th>Wastani</th><th>Daraja</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${r.nafasi}</b></td><td>${esc(r.student.jina)}</td><td class="small">${esc(r.student.regNo||'')}</td>${subs.map(s=>`<td>${r.subjects[s]===undefined?'-':Math.round(r.subjects[s])}</td>`).join('')}<td>${Math.round(r.total)}</td><td>${fmt1(r.avg)}</td><td><span class="pill ${r.avg>=pm?'good':'bad'}">${gradeFor(r.avg).grade}</span></td></tr>`).join('')}</tbody></table></div>
    <div class="pr-sign" style="margin-top:8px"><div><div class="line">Mwalimu wa Taaluma</div></div><div><div class="line">Mkuu wa Shule/Chuo</div></div></div></div>`;
 }
-function pfPrintResults(){ const el=$('pfResPrint'); if(!el){ alert('Chagua mtihani kwanza.'); return; } printSection('pfResPrint','Ripoti ya matokeo Pre-Form One'); }
+function pfPrintResults(){ const el=$('pfResPrint'); if(!el){ alert('Chagua mtihani kwanza.'); return; } printSection('pfResPrint','Ripoti ya matokeo '+stuClass); }
 // ---- Vyeti ----
 function pfStudentAvg(sid,basis){
-  const ids=basis==='all'? pfExams().map(e=>e.id) : [basis]; const v=[];
+  const ids=basis==='all'? classExams(stuClass).map(e=>e.id) : [basis]; const v=[];
   ids.forEach(id=>{ const m=(DB.marks[id]||{})[sid]; if(m) Object.values(m).forEach(x=>{ if(x!==''&&!isNaN(x)) v.push(Number(x)); }); });
   return v.length? mean(v) : null;
 }
@@ -3661,33 +3663,35 @@ function headName(){ const u=DB.users.find(x=>(x.positions||[]).includes('Mwalim
 function academicName(){ const u=DB.users.find(x=>(x.positions||[]).includes('Mwalimu wa Taaluma (Academic Master)')); return u?u.jina:''; }
 function renderPfCert(){
   const cur=$('pfcBasis').value||'all';
-  $('pfcBasis').innerHTML='<option value="all">Wastani wa mitihani yote ya Pre-Form One</option>'+pfExams().map(e=>`<option value="${e.id}">${esc(e.jina)}</option>`).join(''); $('pfcBasis').value=cur;
+  $('pfcBasis').innerHTML='<option value="all">Wastani wa mitihani yote ya '+esc(stuClass)+'</option>'+classExams(stuClass).map(e=>`<option value="${e.id}">${esc(e.jina)}</option>`).join(''); $('pfcBasis').value=cur;
   if(!$('pfcPass').value) $('pfcPass').value=passMark(); if(!$('pfcDate').value) $('pfcDate').value=todayStr();
   if(!$('pfcHead').value) $('pfcHead').value=headName(); if(!$('pfcAcad').value) $('pfcAcad').value=academicName();
   const rows=pfCertRows();
   $('pfCertTbody').innerHTML=rows.length? rows.map(r=>`<tr><td><b>${esc(r.s.jina)}</b><div class="small">${esc(r.s.regNo||'')}</div></td><td>${r.avg===null?'-':fmt1(r.avg)+'%'}</td><td>${r.avg===null?'-':gradeFor(r.avg).grade}</td>
     <td>${r.avg===null?'<span class="pill neutral">Hana alama</span>':r.ok?'<span class="pill good">Anastahili</span>':'<span class="pill bad">Hajafikia kiwango</span>'}${r.cert?` <span class="pill neutral">${esc(r.cert.no)}</span>`:''}</td>
-    <td><button class="btn sm" ${r.avg===null?'disabled':''} onclick="pfIssue('${r.s.id}')">${r.cert?'🖨️ Chapisha Tena':'Toa Cheti'}</button></td></tr>`).join('') : '<tr><td colspan="5" class="empty">Hakuna wanafunzi wa Pre-Form One.</td></tr>';
-  const cs=DB.certificates; $('pfIssuedTbody').innerHTML=cs.length? cs.slice().reverse().map(c=>`<tr><td>${esc(c.no)}</td><td>${esc(c.studentJina)}</td><td>${fmt1(c.avg)}% (${esc(c.grade)})</td><td>${esc(c.dateGrad)}</td><td>${esc(c.issuedBy)}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">Bado hakuna cheti kilichotolewa.</td></tr>';
+    <td><button class="btn sm" ${r.avg===null?'disabled':''} onclick="pfIssue('${r.s.id}')">${r.cert?'🖨️ Chapisha Tena':'Toa Cheti'}</button></td></tr>`).join('') : '<tr><td colspan="5" class="empty">Hakuna wanafunzi wa '+esc(stuClass)+'.</td></tr>';
+  const cs=DB.certificates.filter(c=>c.program===stuClass); $('pfIssuedTbody').innerHTML=cs.length? cs.slice().reverse().map(c=>`<tr><td>${esc(c.no)}</td><td>${esc(c.studentJina)}</td><td>${fmt1(c.avg)}% (${esc(c.grade)})</td><td>${esc(c.dateGrad)}</td><td>${esc(c.issuedBy)}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">Bado hakuna cheti kilichotolewa kwa darasa hili.</td></tr>';
 }
-function pfCertRows(){ const basis=$('pfcBasis').value||'all', pm=parseFloat($('pfcPass').value)||passMark(); return pfStudents().map(s=>{ const a=pfStudentAvg(s.id,basis); return {s,avg:a,ok:a!==null&&a>=pm,cert:DB.certificates.find(c=>c.studentId===s.id&&c.program===PF)}; }); }
-function nextCertNo(){ const y=new Date().getFullYear(); let seq=(DB.school.certSeq||0)+1; const used=new Set(DB.certificates.map(c=>c.no)); let no; do{ no=`CHT-PF1-${y}-${String(seq).padStart(4,'0')}`; seq++; }while(used.has(no)); DB.school.certSeq=seq-1; return no; }
+function pfCertRows(){ const basis=$('pfcBasis').value||'all', pm=parseFloat($('pfcPass').value)||passMark(); return classStudents(stuClass).map(s=>{ const a=pfStudentAvg(s.id,basis); return {s,avg:a,ok:a!==null&&a>=pm,cert:DB.certificates.find(c=>c.studentId===s.id&&c.program===stuClass)}; }); }
+function classCertPrefix(cls){ const n=normClass(cls); if(n==='pre-form one') return 'PF1'; const p=n.replace(/[^a-z0-9]/gi,'').toUpperCase().slice(0,10); return p||'CLS'; }
+function nextCertNo(cls){ const y=new Date().getFullYear(); const pre=classCertPrefix(cls); let seq=(DB.school.certSeq||0)+1; const used=new Set(DB.certificates.map(c=>c.no)); let no; do{ no=`CHT-${pre}-${y}-${String(seq).padStart(4,'0')}`; seq++; }while(used.has(no)); DB.school.certSeq=seq-1; return no; }
 function makeCert(r){
-  const g=gradeFor(r.avg); const c={id:uid(),no:nextCertNo(),program:PF,studentId:r.s.id,studentJina:r.s.jina,jina:r.s.jina+' — Cheti Pre-Form One',regNo:r.s.regNo||'',avg:r.avg,grade:g.grade,maoni:g.maoni,dateGrad:$('pfcDate').value||todayStr(),principal:$('pfcHead').value,academic:$('pfcAcad').value,mwaka:DB.school.mwakaMasomo||String(new Date().getFullYear()),issuedAt:new Date().toISOString(),issuedBy:currentUser.jina};
+  const g=gradeFor(r.avg); const c={id:uid(),no:nextCertNo(stuClass),program:stuClass,studentId:r.s.id,studentJina:r.s.jina,jina:r.s.jina+' — Cheti '+stuClass,regNo:r.s.regNo||'',avg:r.avg,grade:g.grade,maoni:g.maoni,dateGrad:$('pfcDate').value||todayStr(),principal:$('pfcHead').value,academic:$('pfcAcad').value,mwaka:DB.school.mwakaMasomo||String(new Date().getFullYear()),issuedAt:new Date().toISOString(),issuedBy:currentUser.jina};
   DB.certificates.push(c); return c;
 }
 async function certificateHTML(c){
   const sc=DB.school; const logo=sc.nembo?`<img src="${sc.nembo}" style="width:70px;height:70px;object-fit:cover;border-radius:10px">`:'';
   const qr = await qrImgTag(certVerifyURL(c.no), 110);
+  const progU = esc((c.program||'').toUpperCase());
   return `<div class="cert"><div class="cert-in">${logo}<div class="cert-school">${esc(sc.jina||'Shule')}</div><div class="small">${esc([sc.anuani,sc.mahali,sc.simu].filter(Boolean).join(' • '))}</div>
-   <div class="cert-title">CHETI CHA KUHITIMU</div><div class="cert-sub">Pre-Form One Programme — Certificate of Completion</div>
+   <div class="cert-title">CHETI CHA KUHITIMU</div><div class="cert-sub">${esc(c.program||'')} Programme — Certificate of Completion</div>
    <p class="cert-p">Kinathibitisha kwamba</p><div class="cert-name">${esc(c.studentJina)}</div><div class="small">Namba ya Usajili: ${esc(c.regNo||'-')}</div>
-   <p class="cert-p">ametimiza masomo ya kozi ya <b>PRE-FORM ONE</b> mwaka wa masomo <b>${esc(c.mwaka)}</b>, na amefaulu kwa wastani wa <b>${fmt1(c.avg)}%</b> (Daraja <b>${esc(c.grade)}</b> — ${esc(c.maoni)}).<br>This is to certify that the above-named student has successfully completed the Pre-Form One programme.</p>
+   <p class="cert-p">ametimiza masomo ya kozi ya <b>${progU}</b> mwaka wa masomo <b>${esc(c.mwaka)}</b>, na amefaulu kwa wastani wa <b>${fmt1(c.avg)}%</b> (Daraja <b>${esc(c.grade)}</b> — ${esc(c.maoni)}).<br>This is to certify that the above-named student has successfully completed the ${esc(c.program||'')} programme.</p>
    <div class="cert-foot"><div><div class="line">${esc(c.principal||'')}</div><div class="small">Mkuu wa Shule/Chuo</div></div><div style="text-align:center">${qr}<div class="small">Cheti Na.: <b>${esc(c.no)}</b> · Tarehe: ${esc(c.dateGrad)}</div></div><div><div class="line">${esc(c.academic||'')}</div><div class="small">Mwalimu wa Taaluma</div></div></div></div></div>`;
 }
 async function printCerts(list){
   const htmls = await Promise.all(list.map(c=>certificateHTML(c)));
-  $('certPrint').innerHTML=htmls.join('<div style="page-break-after:always"></div>'); printSection('certPrint','Vyeti vya Pre-Form One ('+list.length+')',true);
+  $('certPrint').innerHTML=htmls.join('<div style="page-break-after:always"></div>'); printSection('certPrint','Vyeti vya '+stuClass+' ('+list.length+')',true);
 }
 async function pfIssue(sid){
   const r=pfCertRows().find(x=>x.s.id===sid); if(!r||r.avg===null){ alert('Mwanafunzi huyu hana alama.'); return; }
@@ -3826,7 +3830,7 @@ function openApplication(id,presetProgram){
   openGM(a?'Ombi '+a.no:'Ombi Jipya la Kujiunga',`<input type="hidden" id="apId" value="${a?a.id:''}">
    <div class="pr-sec"><span>A. Mpango na Mwanafunzi</span></div>
    <div class="grid g2"><div class="field"><label>Ngazi/Programu</label><select id="apProgram" onchange="saveAppDraftAndRedraw()">${ng.map(n=>`<option ${n===prog?'selected':''}>${esc(n)}</option>`).join('')}</select></div>
-    <div class="field"><label>Darasa Analoomba</label><input id="apDarasa" list="stDarasaList" value="${esc(v('darasa',prog===PF?PF:''))}"></div>
+    <div class="field"><label>Darasa Analoomba</label><input id="apDarasa" list="stDarasaList" value="${esc(v('darasa',prog==='Pre-Form One'?'Pre-Form One':''))}"></div>
     <div class="field"><label>Jina Kamili la Mwanafunzi</label><input id="apJina" value="${esc(v('jina'))}"></div>
     <div class="field"><label>Jinsia</label><select id="apJinsia"><option ${v('jinsia')==='Mvulana'?'selected':''}>Mvulana</option><option ${v('jinsia')==='Msichana'?'selected':''}>Msichana</option></select></div>
     <div class="field"><label>Tarehe ya Kuzaliwa</label><input type="date" id="apDob" value="${esc(v('dob'))}"></div>
@@ -3912,7 +3916,7 @@ function printApplication(id){
 }
 function openBlankForm(){
   const ng=DB.school.ngazi.length?DB.school.ngazi:NGAZI_OPTS;
-  openGM('Chapisha Fomu Tupu ya Kujiunga',`<div class="grid g2"><div class="field"><label>Ngazi/Programu</label><select id="bfProgram">${ng.map(n=>`<option ${n===PF?'selected':''}>${esc(n)}</option>`).join('')}</select></div><div class="field"><label>Aina ya Mwanafunzi</label><select id="bfBweni"><option value="both">Kutwa na Bweni (zote)</option><option value="day">Kutwa tu</option><option value="boarding">Bweni tu</option></select></div></div>
+  openGM('Chapisha Fomu Tupu ya Kujiunga',`<div class="grid g2"><div class="field"><label>Ngazi/Programu</label><select id="bfProgram">${ng.map(n=>`<option ${n==='Pre-Form One'?'selected':''}>${esc(n)}</option>`).join('')}</select></div><div class="field"><label>Aina ya Mwanafunzi</label><select id="bfBweni"><option value="both">Kutwa na Bweni (zote)</option><option value="day">Kutwa tu</option><option value="boarding">Bweni tu</option></select></div></div>
    <p class="small">Mahitaji yanayoonekana yanatoka kwenye "Mahitaji ya Shule". Namba za malipo zinatoka kwenye "Taarifa za Shule".</p><button class="btn" onclick="printBlankForm()">🖨️ Chapisha</button>`);
 }
 function printBlankForm(){
@@ -4258,8 +4262,7 @@ function printPmtList(){
 // ===== v6 (billing/superadmin/levels) =====
 // ================= NGAZI YA UONEKANI (LEVEL VISIBILITY) =================
 const LEVEL_GROUPS = [
-  {key:'nursery', label:'Nursery', test:s=>s.ngazi==='Nursery'},
-  {key:'awali', label:'Awali', test:s=>s.ngazi==='Awali'},
+  {key:'awali', label:'Nursery/Awali', test:s=>s.ngazi==='Awali'||s.ngazi==='Nursery'},
   {key:'msingi', label:'Msingi (Darasa 1-7 / Primary)', test:s=>s.ngazi==='Msingi (Primary)'},
   {key:'preform', label:'Pre-Form One', test:s=>s.ngazi==='Pre-Form One'},
   {key:'sekondari_o', label:'Sekondari (Form 1-4)', test:s=>s.ngazi==='Sekondari (Secondary)' && ['Form One','Form Two','Form Three','Form Four'].some(f=>sameClass(s.darasa,f))},
@@ -4269,8 +4272,7 @@ const LEVEL_GROUPS = [
 ];
 function levelKeyForClass(c){
   const nc = normClass(c);
-  if(cgFind('Nursery').some(m=>normClass(m)===nc)) return 'nursery';
-  if(cgFind('Awali').some(m=>normClass(m)===nc)) return 'awali';
+  if(cgFind('Nursery/Awali').some(m=>normClass(m)===nc)) return 'awali';
   if(cgFind('Shule ya Msingi').some(m=>normClass(m)===nc)) return 'msingi';
   if(nc==='pre-form one') return 'preform';
   if(['form 1','form 2','form 3','form 4'].includes(nc)) return 'sekondari_o';
