@@ -614,7 +614,8 @@ Maid R. Nsonjo | 40000"></textarea>
         <datalist id="needKundiList"></datalist>
         <button class="btn ghost" onclick="seedDefaultReqs()">⚡ Weka Mahitaji ya Kawaida (sare, sweta, michezo, mashuka, godoro, rim paper, graduation...)</button>
       </div>
-      <div class="card"><h3>Orodha ya Mahitaji</h3><div class="table-scroll"><table><thead><tr><th>Kipengele</th><th>Kundi</th><th>Ngazi</th><th>Rangi</th><th>Idadi</th><th>Gharama</th><th></th></tr></thead><tbody id="needTbody"></tbody></table></div></div>
+      <div class="card"><h3>Orodha ya Mahitaji</h3><div class="table-scroll"><table><thead><tr><th>Kipengele</th><th>Kundi</th><th>Ngazi</th><th>Rangi</th><th>Idadi</th><th>Gharama</th><th></th></tr></thead><tbody id="needTbody"></tbody></table></div>
+        <p class="small" style="margin-top:10px">📎 Mna fomu yenu ya zamani ya kujiunga? Iweke/ichague kwenye <a href="#" onclick="document.querySelector('.nav-btn[data-page=admissions]').click();return false;">Maombi ya Kujiunga → Fomu Zenu Wenyewe</a>.</p></div>
       <div class="card"><h3>Ufuatiliaji kwa Mwanafunzi</h3>
         <div class="field"><label>Chagua Mwanafunzi</label><select id="needStudentSel" onchange="renderNeedChecklist()"></select></div>
         <div id="needChecklist"></div>
@@ -899,6 +900,8 @@ Maid R. Nsonjo | 40000"></textarea>
     <div class="page" id="page-admissions">
       <div class="page-header"><div><h1>Maombi ya Kujiunga</h1><p>Fomu ya kujiunga na shule (Pre-Form One na ngazi zote): mahitaji, malipo na akaunti</p></div></div>
       <div class="card" id="apAddCard"><div class="row-actions" style="flex-wrap:wrap"><button class="btn" onclick="openApplication('')">+ Ombi Jipya</button><button class="btn" onclick="openApplication('','Pre-Form One')">+ Ombi la Pre-Form One</button><button class="btn ghost" onclick="openBlankForm()">🖨️ Chapisha Fomu Tupu</button><button class="btn ghost" onclick="document.querySelector('.nav-btn[data-page=needs]').click()">🎒 Hariri Mahitaji</button></div>
+        <h3 style="margin-top:18px">📎 Fomu Zenu Wenyewe (Upload)</h3>
+        <div id="sfWrap"></div>
         <p class="small">Rangi za sare, idadi, mashuka, godoro, rim paper, mchango wa graduation n.k. huwekwa kwenye "Mahitaji ya Shule"; namba za akaunti za malipo kwenye "Taarifa za Shule".</p></div>
       <div class="tabbar" id="apFilterTabs"></div>
       <div class="card"><div class="table-scroll"><table><thead><tr><th>Ombi</th><th>Mwanafunzi</th><th>Programu</th><th>Mzazi</th><th>Hali</th><th></th></tr></thead><tbody id="apTbody"></tbody></table></div></div>
@@ -1076,9 +1079,9 @@ Maid R. Nsonjo | 40000"></textarea>
 
 <script>
 let DB = null;
-const DB_KEYS = ["school","students","exams","marks","attendance","fees","staff","leave","requirements","payroll","users","subjects","syllabus","duty","discipline","reports_inbox","parentReports","timetable","announcements","library","finance","customSubjects","certificates","applications","calendar","hiddenSubjects","audit"];
+const DB_KEYS = ["school","students","exams","marks","attendance","fees","staff","leave","requirements","payroll","users","subjects","syllabus","duty","discipline","reports_inbox","parentReports","timetable","announcements","library","finance","customSubjects","certificates","applications","calendar","hiddenSubjects","schoolForms","audit"];
 function blankDB(){ return {school:{ngazi:[]}, students:[], exams:[], marks:{}, attendance:{}, fees:{}, staff:[], leave:[], requirements:[], payroll:[],
-          users:[], subjects:[], syllabus:{}, duty:{log:[]}, discipline:[], reports_inbox:[], parentReports:[], timetable:[], announcements:[], library:{books:[],loans:[]}, finance:[], customSubjects:[], certificates:[], applications:[], calendar:[], hiddenSubjects:[], audit:[]}; }
+          users:[], subjects:[], syllabus:{}, duty:{log:[]}, discipline:[], reports_inbox:[], parentReports:[], timetable:[], announcements:[], library:{books:[],loans:[]}, finance:[], customSubjects:[], certificates:[], applications:[], calendar:[], hiddenSubjects:[], schoolForms:{admissionForm:null,admissionLetter:null}, audit:[]}; }
 function normalizeDB(db){
   const b = blankDB();
   DB_KEYS.forEach(k=>{ if(db[k]===undefined||db[k]===null) db[k]=b[k]; });
@@ -1088,6 +1091,7 @@ function normalizeDB(db){
   if(!db.library.loans) db.library.loans=[];
   if(!db.school.paylistCfg) db.school.paylistCfg = {threshold:80000, dayFee:80000, hostelFee:350000};
   if(!db.school.subscription) db.school.subscription = {status:'active', trialStart:null, activatedUntil:null, payments:[]};
+  if(!db.schoolForms) db.schoolForms = {admissionForm:null, admissionLetter:null};
   return db;
 }
 const NGAZI_OPTS = ["Awali","Msingi (Primary)","Pre-Form One","Sekondari (Secondary)","Stashahada (Diploma)","Shahada (Degree)","Chuo Kikuu"];
@@ -1500,7 +1504,7 @@ function refreshPage(p){
   if(p==='backup') renderBackupPage();
   if(p==='subjects') renderSubjectsPage();
   if(p==='preform') renderPreformPage();
-  if(p==='admissions') renderAdmissionsPage();
+  if(p==='admissions'){ renderAdmissionsPage(); renderSchoolForms(); }
   if(p==='calendar') renderCalendarPage();
   if(p==='teacherperf') renderTeacherPerfPage();
   if(p==='duty'){ renderDutyPage(); }
@@ -3658,7 +3662,7 @@ function renderAdmissionsPage(){
   const list=DB.applications.filter(a=>apFilter==='all'||a.status===apFilter).slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
   $('apFilterTabs').innerHTML=[['all','Zote'],...Object.entries(APP_STATUS).map(([k,v])=>[k,v[0]])].map(([k,l])=>{ const c=k==='all'?DB.applications.length:DB.applications.filter(a=>a.status===k).length; return `<button class="${apFilter===k?'active':''}" onclick="apFilter='${k}';renderAdmissionsPage()">${l} (${c})</button>`; }).join('');
   $('apTbody').innerHTML=list.length? list.map(a=>{ const st=APP_STATUS[a.status]||['?','neutral']; return `<tr><td><b>${esc(a.no)}</b><div class="small">${esc((a.createdAt||'').slice(0,10))}</div></td><td><b>${esc(a.jina)}</b><div class="small">${esc(a.jinsia||'')} · ${a.bweni?'Bweni':'Kutwa'}</div></td><td>${esc(a.program||'')}<div class="small">${esc(a.darasa||'')}</div></td><td>${esc((a.mzazi&&a.mzazi.jina)||'-')}<div class="small">${esc((a.mzazi&&a.mzazi.simu)||'')}</div></td><td><span class="pill ${st[1]}">${st[0]}</span></td>
-    <td class="row-actions"><button class="btn sm ghost" onclick="openApplication('${a.id}')">Fungua</button><button class="btn sm ghost" onclick="printApplication('${a.id}')">🖨️</button>${a.status==='accepted'?`<button class="btn sm accent" onclick="enrollApplication('${a.id}')">Sajili</button>`:''}</td></tr>`; }).join('') : '<tr><td colspan="6" class="empty">Hakuna maombi bado.</td></tr>';
+    <td class="row-actions"><button class="btn sm ghost" onclick="openApplication('${a.id}')">Fungua</button><button class="btn sm ghost" onclick="printApplication('${a.id}')">🖨️</button>${(a.status==='accepted'||a.status==='enrolled')?`<button class="btn sm ghost" onclick="sfOpenPrint('admissionLetter')">✉️ Barua</button>`:''}${a.status==='accepted'?`<button class="btn sm accent" onclick="enrollApplication('${a.id}')">Sajili</button>`:''}</td></tr>`; }).join('') : '<tr><td colspan="6" class="empty">Hakuna maombi bado.</td></tr>';
 }
 function appReqs(program){ const ng=program; return DB.requirements.filter(r=>!r.ngazi||r.ngazi===ng); }
 function openApplication(id,presetProgram){
@@ -3744,13 +3748,24 @@ function applicationFormHTML(a,opts){
    <div class="pr-sign"><div><div class="line">Sahihi ya Mzazi/Mlezi &nbsp;&nbsp; Tarehe: ________</div></div><div><div class="line">Sahihi ya Mwanafunzi (kama anaweza)</div></div></div>
    <div class="af-box"><b>Kwa matumizi ya ofisi:</b> Ombi Na.: ${a?esc(a.no):'________'} &nbsp; Tarehe ya kupokea: ${a?esc((a.createdAt||'').slice(0,10)):'________'} &nbsp; Amepokea: ${a?esc(a.by||''):'________'}<br>Uamuzi: ☐ Amekubaliwa &nbsp; ☐ Hajakubaliwa &nbsp; Maoni: ${a&&a.note?esc(a.note):'______________________'} &nbsp; Sahihi ya Mkuu: ____________</div></div>`;
 }
-function printApplication(id){ const a=DB.applications.find(x=>x.id===id); $('formPrint').innerHTML=applicationFormHTML(a); printSection('formPrint','Fomu ya kujiunga '+a.no); }
+function printApplication(id){
+  const a=DB.applications.find(x=>x.id===id);
+  if((DB.school.formSource||'default')==='custom' && DB.schoolForms && DB.schoolForms.admissionForm){
+    alert('Umechagua kutumia fomu yenu wenyewe — itafunguliwa kama ilivyopakiwa (haitajazwa data ya ombi hili kiotomatiki). Chagua "Fomu ya Mfumo" kwenye Fomu Zenu Wenyewe ukitaka data ijazwe kiotomatiki.');
+    sfOpenPrint('admissionForm'); return;
+  }
+  $('formPrint').innerHTML=applicationFormHTML(a); printSection('formPrint','Fomu ya kujiunga '+a.no);
+}
 function openBlankForm(){
   const ng=DB.school.ngazi.length?DB.school.ngazi:NGAZI_OPTS;
   openGM('Chapisha Fomu Tupu ya Kujiunga',`<div class="grid g2"><div class="field"><label>Ngazi/Programu</label><select id="bfProgram">${ng.map(n=>`<option ${n===PF?'selected':''}>${esc(n)}</option>`).join('')}</select></div><div class="field"><label>Aina ya Mwanafunzi</label><select id="bfBweni"><option value="both">Kutwa na Bweni (zote)</option><option value="day">Kutwa tu</option><option value="boarding">Bweni tu</option></select></div></div>
    <p class="small">Mahitaji yanayoonekana yanatoka kwenye "Mahitaji ya Shule". Namba za malipo zinatoka kwenye "Taarifa za Shule".</p><button class="btn" onclick="printBlankForm()">🖨️ Chapisha</button>`);
 }
-function printBlankForm(){ $('formPrint').innerHTML=applicationFormHTML(null,{program:$('bfProgram').value,boarding:$('bfBweni').value}); closeModal('genericModal'); printSection('formPrint','Fomu tupu ya kujiunga'); }
+function printBlankForm(){
+  closeModal('genericModal');
+  if((DB.school.formSource||'default')==='custom' && DB.schoolForms && DB.schoolForms.admissionForm){ sfOpenPrint('admissionForm'); return; }
+  $('formPrint').innerHTML=applicationFormHTML(null,{program:$('bfProgram').value,boarding:$('bfBweni').value}); printSection('formPrint','Fomu tupu ya kujiunga');
+}
 
 // ================= MALIPO, RISITI YENYE BARCODE =================
 const PAY_METHODS=['Fedha Taslimu','Benki','M-Pesa','Tigo Pesa','Airtel Money','HaloPesa','Nyingine'];
@@ -4212,6 +4227,81 @@ async function saDeactivate(instId){
   school.subscription = Object.assign({payments:[]}, school.subscription||{}, {status:'off'});
   await window.storage.set('inst_'+instId+':school', JSON.stringify(school), true);
   await renderSuperAdmin();
+}
+
+// ===== v8 (school forms upload) =====
+// ================= FOMU ZA SHULE (Upload: Fomu ya Kujiunga + Barua ya Kudahiliwa) =================
+const SF_MAXBYTES = 700*1024; // ~700KB raw, salama kwa kikomo cha 1MB cha hifadhidata
+function sfReadAsDataURL(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(file); }); }
+function sfCompressImage(dataUrl, maxW){
+  return new Promise((resolve)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      let w = img.width, h = img.height;
+      if(w > maxW){ h = Math.round(h * (maxW/w)); w = maxW; }
+      const canvas = document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+      let q = 0.85, out = canvas.toDataURL('image/jpeg', q);
+      while(out.length*0.75 > SF_MAXBYTES && q > 0.35){ q -= 0.1; out = canvas.toDataURL('image/jpeg', q); }
+      resolve(out);
+    };
+    img.onerror = ()=>resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+async function sfUpload(slot, inputId){
+  const inp = $(inputId); const file = inp.files && inp.files[0]; if(!file){ return; }
+  const isPdf = file.type === 'application/pdf';
+  const isImg = file.type.startsWith('image/');
+  if(!isPdf && !isImg){ alert('Tumia picha (JPG/PNG) au faili la PDF pekee.'); inp.value=''; return; }
+  let dataUrl = await sfReadAsDataURL(file);
+  if(isImg){ dataUrl = await sfCompressImage(dataUrl, 1400); }
+  if(dataUrl.length*0.75 > SF_MAXBYTES){
+    if(isPdf){ alert('Faili la PDF ni kubwa mno (zaidi ya ~700KB). Tumia skana ya ubora wa chini kidogo, au badilisha kuwa picha (JPG) kisha pakia.'); inp.value=''; return; }
+    alert('Picha bado ni kubwa baada ya kubana. Jaribu picha nyingine.'); inp.value=''; return;
+  }
+  DB.schoolForms = DB.schoolForms || {admissionForm:null, admissionLetter:null};
+  DB.schoolForms[slot] = {name:file.name, mime:isPdf?'application/pdf':'image/jpeg', data:dataUrl, uploadedAt:new Date().toISOString(), by:currentUser.jina};
+  await persist(); inp.value=''; renderSchoolForms(); await logAction('ongeza','Fomu za Shule', (slot==='admissionForm'?'Fomu ya Kujiunga':'Barua ya Kudahiliwa')+' imepakiwa: '+file.name);
+}
+async function sfRemove(slot){
+  if(!confirm('Futa faili hili lililopakiwa?')) return;
+  DB.schoolForms[slot] = null; await persist(); renderSchoolForms();
+}
+function sfOpenPrint(slot){
+  const f = (DB.schoolForms||{})[slot]; if(!f){ alert('Bado hakuna faili lililopakiwa.'); return; }
+  if(f.mime === 'application/pdf'){
+    const w = window.open(); if(w){ w.document.write(`<iframe src="${f.data}" style="border:0;width:100%;height:100vh"></iframe>`); w.document.title = f.name; }
+    else alert('Kivinjari kimezuia dirisha jipya. Ruhusu pop-up kisha jaribu tena.');
+    return;
+  }
+  $('formPrint').innerHTML = `<div style="text-align:center"><img src="${f.data}" style="max-width:100%"></div>`;
+  printSection('formPrint', f.name);
+}
+async function setFormSource(val){ DB.school.formSource = val; await persist(); renderSchoolForms(); }
+function renderSchoolForms(){
+  const wrap = $('sfWrap'); if(!wrap) return;
+  const sf = DB.schoolForms || {admissionForm:null, admissionLetter:null};
+  const src = DB.school.formSource || 'default';
+  const editable = canEditData(), delOk = canDeleteData();
+  const slotCard = (slot, label, help)=>{
+    const f = sf[slot];
+    return `<div class="pr-box" style="margin-bottom:10px">
+      <b>${esc(label)}</b><div class="small" style="margin-bottom:6px">${esc(help)}</div>
+      ${f ? `<div class="row-actions" style="flex-wrap:wrap"><span class="pill good">📎 ${esc(f.name)}</span><button class="btn sm ghost" onclick="sfOpenPrint('${slot}')">🖨️ Fungua/Chapisha</button>${delOk?`<button class="btn sm danger" onclick="sfRemove('${slot}')">Futa</button>`:''}</div>`
+          : `<span class="small">Bado hakuna faili lililopakiwa.</span>`}
+      ${editable ? `<div style="margin-top:8px"><input type="file" id="sfIn_${slot}" accept="image/*,application/pdf" onchange="sfUpload('${slot}','sfIn_${slot}')"></div>` : ''}
+    </div>`;
+  };
+  wrap.innerHTML = `
+    <div class="field">
+      <label style="margin-bottom:6px">Fomu ya Kujiunga Itakayotumika Kuchapishwa</label>
+      <label class="chip-check"><input type="radio" name="sfSrc" value="default" ${src!=='custom'?'checked':''} ${editable?'':'disabled'} onchange="setFormSource('default')"> Fomu ya Mfumo (inajiunga na Mahitaji + Malipo kiotomatiki)</label>
+      <label class="chip-check"><input type="radio" name="sfSrc" value="custom" ${src==='custom'?'checked':''} ${editable?'':'disabled'} onchange="setFormSource('custom')"> Fomu Yangu Niliyopakia (itachapishwa kama ilivyo, bila kujaza data kiotomatiki)</label>
+    </div>
+    ${slotCard('admissionForm','Fomu ya Kujiunga / Application Form (yako mwenyewe)','Pakia picha (JPG/PNG) au PDF ya fomu yenu ya zamani. Itatumika badala ya iliyoundwa na mfumo ukichagua "Fomu Yangu" hapo juu.')}
+    ${slotCard('admissionLetter','Barua ya Kudahiliwa / Admission Letter','Pakia kiolezo cha barua yenu ya kudahiliwa. Itachapishwa kama ilivyo (bado itahitaji kujazwa jina la mwanafunzi kwa mkono, au uhariri faili kabla ya kupakia).')}
+    <p class="small">⚠️ Faili kubwa (zaidi ya ~700KB) hazitapakiwa — mfumo utaibana picha kiotomatiki, lakini PDF kubwa yabidi ipunguzwe ukubwa kwanza.</p>`;
 }
 
 loadAll();
