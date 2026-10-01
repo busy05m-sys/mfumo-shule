@@ -250,6 +250,7 @@ window.FIREBASE_CONFIG = {
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js" defer></script>
 <script>
 // ============================================================
 // KIUNGANISHI CHA FIREBASE (kinachochukua nafasi ya window.storage
@@ -331,6 +332,14 @@ window.FIREBASE_CONFIG = {
     <p class="small" id="loginError" style="color:var(--bad);margin-top:8px;"></p>
     <div style="text-align:center;margin-top:14px;font-size:11px;color:#9aa">Kwa msaada: info@kiseja.com · 0736631613</div>
     <div style="text-align:center;margin-top:6px;"><a href="#" onclick="openSuperAdmin();return false;" style="font-size:11px;color:#9aa;text-decoration:underline">Admin wa Mfumo (Msimamizi wa Huduma)</a></div>
+  </div>
+</div>
+
+<div id="pubVerifyScreen" style="display:none;position:fixed;inset:0;background:rgba(18,51,80,.97);z-index:9800;align-items:center;justify-content:center;padding:16px;overflow:auto">
+  <div class="login-box" style="max-width:460px">
+    <h2 id="pvTitle">🔎 Kuthibitisha...</h2>
+    <div id="pvOut"><p class="small">Inatafuta taarifa, subiri kidogo...</p></div>
+    <button class="btn ghost" style="width:100%;margin-top:16px" onclick="document.getElementById('pubVerifyScreen').style.display='none';document.getElementById('loginScreen').style.display='flex';history.replaceState(null,'',location.pathname)">Nenda Mfumo wa Shule →</button>
   </div>
 </div>
 
@@ -3533,28 +3542,36 @@ function makeCert(r){
   const g=gradeFor(r.avg); const c={id:uid(),no:nextCertNo(),program:PF,studentId:r.s.id,studentJina:r.s.jina,jina:r.s.jina+' — Cheti Pre-Form One',regNo:r.s.regNo||'',avg:r.avg,grade:g.grade,maoni:g.maoni,dateGrad:$('pfcDate').value||todayStr(),principal:$('pfcHead').value,academic:$('pfcAcad').value,mwaka:DB.school.mwakaMasomo||String(new Date().getFullYear()),issuedAt:new Date().toISOString(),issuedBy:currentUser.jina};
   DB.certificates.push(c); return c;
 }
-function certificateHTML(c){
+async function certificateHTML(c){
   const sc=DB.school; const logo=sc.nembo?`<img src="${sc.nembo}" style="width:70px;height:70px;object-fit:cover;border-radius:10px">`:'';
+  const qr = await qrImgTag(certVerifyURL(c.no), 110);
   return `<div class="cert"><div class="cert-in">${logo}<div class="cert-school">${esc(sc.jina||'Shule')}</div><div class="small">${esc([sc.anuani,sc.mahali,sc.simu].filter(Boolean).join(' • '))}</div>
    <div class="cert-title">CHETI CHA KUHITIMU</div><div class="cert-sub">Pre-Form One Programme — Certificate of Completion</div>
    <p class="cert-p">Kinathibitisha kwamba</p><div class="cert-name">${esc(c.studentJina)}</div><div class="small">Namba ya Usajili: ${esc(c.regNo||'-')}</div>
    <p class="cert-p">ametimiza masomo ya kozi ya <b>PRE-FORM ONE</b> mwaka wa masomo <b>${esc(c.mwaka)}</b>, na amefaulu kwa wastani wa <b>${fmt1(c.avg)}%</b> (Daraja <b>${esc(c.grade)}</b> — ${esc(c.maoni)}).<br>This is to certify that the above-named student has successfully completed the Pre-Form One programme.</p>
-   <div class="cert-foot"><div><div class="line">${esc(c.principal||'')}</div><div class="small">Mkuu wa Shule/Chuo</div></div><div style="text-align:center">${barcodeSVG('CHT|'+c.no+'|'+(c.regNo||''),38)}<div class="small">Cheti Na.: <b>${esc(c.no)}</b> · Tarehe: ${esc(c.dateGrad)}</div></div><div><div class="line">${esc(c.academic||'')}</div><div class="small">Mwalimu wa Taaluma</div></div></div></div></div>`;
+   <div class="cert-foot"><div><div class="line">${esc(c.principal||'')}</div><div class="small">Mkuu wa Shule/Chuo</div></div><div style="text-align:center">${qr}<div class="small">Cheti Na.: <b>${esc(c.no)}</b> · Tarehe: ${esc(c.dateGrad)}</div></div><div><div class="line">${esc(c.academic||'')}</div><div class="small">Mwalimu wa Taaluma</div></div></div></div></div>`;
 }
-function printCerts(list){ $('certPrint').innerHTML=list.map(c=>certificateHTML(c)).join('<div style="page-break-after:always"></div>'); printSection('certPrint','Vyeti vya Pre-Form One ('+list.length+')',true); }
+async function printCerts(list){
+  const htmls = await Promise.all(list.map(c=>certificateHTML(c)));
+  $('certPrint').innerHTML=htmls.join('<div style="page-break-after:always"></div>'); printSection('certPrint','Vyeti vya Pre-Form One ('+list.length+')',true);
+}
 async function pfIssue(sid){
   const r=pfCertRows().find(x=>x.s.id===sid); if(!r||r.avg===null){ alert('Mwanafunzi huyu hana alama.'); return; }
   if(!r.ok && !confirm(`Wastani wa ${r.s.jina} (${fmt1(r.avg)}%) uko chini ya kiwango cha kufaulu. Toa cheti hata hivyo?`)) return;
   let c=r.cert; if(!c){ c=makeCert(r); await persist(); await logAction('ongeza','Vyeti','Cheti '+c.no+' — '+c.studentJina); }
-  renderPfCert(); printCerts([c]);
+  renderPfCert(); await printCerts([c]);
 }
 async function pfIssueAll(){
   const rows=pfCertRows().filter(r=>r.ok); if(!rows.length){ alert('Hakuna mwanafunzi anayestahili kwa kiwango kilichowekwa.'); return; }
   if(!confirm(`Toa/chapisha vyeti ${rows.length} vya waliofikia kiwango?`)) return;
-  const list=rows.map(r=>r.cert||makeCert(r)); await persist(); renderPfCert(); printCerts(list);
+  const list=rows.map(r=>r.cert||makeCert(r)); await persist(); renderPfCert(); await printCerts(list);
 }
 function pfVerify(){
-  const raw=$('pfVerifyIn').value.trim(); const no=(raw.split('|')[1]&&raw.startsWith('CHT|'))?raw.split('|')[1]:raw; const c=DB.certificates.find(x=>x.no===no);
+  const raw=parseVerifyInput($('pfVerifyIn').value);
+  let no=raw;
+  if(raw.startsWith('C|')) no=raw.split('|')[2];
+  else if(raw.startsWith('CHT|')) no=raw.split('|')[1];
+  const c=DB.certificates.find(x=>x.no===no);
   $('pfVerifyOut').innerHTML=c?`<div class="note-box" style="border-color:var(--good)">✅ <b>Cheti halali</b>: ${esc(c.studentJina)} — ${esc(c.program)}, wastani ${fmt1(c.avg)}% (${esc(c.grade)}), kilichotolewa ${esc((c.issuedAt||'').slice(0,10))} na ${esc(c.issuedBy)}.</div>`:'<div class="note-box" style="border-color:var(--bad)">❌ Cheti hiki hakipo kwenye kumbukumbu za taasisi hii.</div>';
 }
 
@@ -3785,7 +3802,7 @@ async function savePayment(sid){
   const kiasi=parseFloat($('pyKiasi').value); if(!(kiasi>0)){ alert('Weka kiasi sahihi.'); return; }
   const f=DB.fees[sid]||(DB.fees[sid]={ada_jumla:0,malipo:[]});
   f.malipo.push({id:uid(),no:nextReceiptNo(),tarehe:$('pyTarehe').value||todayStr(),kiasi,njia:$('pyNjia').value,aina:$('pyAina').value,rejea:$('pyRejea').value.trim(),maelezo:$('pyMaelezo').value.trim(),na:currentUser.jina,printCount:0});
-  const doPrint=$('pyPrint').checked, idx=f.malipo.length-1; await persist(); closeModal('genericModal'); renderFeesTable(); if(doPrint) printReceipt(sid,idx);
+  const doPrint=$('pyPrint').checked, idx=f.malipo.length-1; await persist(); closeModal('genericModal'); renderFeesTable(); if(doPrint) await printReceipt(sid,idx);
 }
 function addPayment(sid){ openPayment(sid); }
 function showReceipts(sid){
@@ -3794,9 +3811,10 @@ function showReceipts(sid){
   openGM('Malipo ya '+s.jina,`<div class="table-scroll"><table><thead><tr><th>Tarehe</th><th>Kiasi</th><th>Aina</th><th>Risiti Na.</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="empty">Hakuna malipo yaliyorekodiwa.</td></tr>'}</tbody></table></div>`);
 }
 function receiptPayload(p,i,s){ return `${receiptNo(p,i)}|${(s&&s.regNo)||''}|${Math.round(p.kiasi)}|${String(p.tarehe||'').replace(/-/g,'')}`; }
-function printReceipt(sid,i){
+async function printReceipt(sid,i){
   const s=DB.students.find(x=>x.id===sid), f=DB.fees[sid], p=f.malipo[i], sc=DB.school;
   const paidTo=f.malipo.slice(0,i+1).reduce((a,b)=>a+Number(b.kiasi||0),0), bal=(f.ada_jumla||0)-paidTo, copy=(p.printCount||0)>0;
+  const qr = await qrImgTag(receiptVerifyURL(receiptPayload(p,i,s)), 130);
   $('receiptContent').innerHTML=`<div class="rc-sheet">${copy?'<div class="rc-copy">NAKALA</div>':''}
    <div style="text-align:center;border-bottom:2px solid #C7912E;padding-bottom:8px;margin-bottom:10px">${sc.nembo?`<img src="${sc.nembo}" style="width:52px;height:52px;border-radius:8px;object-fit:cover"><br>`:''}<h2 style="margin:4px 0 0">${esc(sc.jina||'Shule')}</h2><div class="small">${esc([sc.anuani,sc.mahali,sc.simu].filter(Boolean).join(' • '))}</div><h3 style="margin:8px 0 0;letter-spacing:.08em">RISITI YA MALIPO</h3></div>
    <table><tbody><tr><td>Risiti Na.</td><td><b>${esc(receiptNo(p,i))}</b></td><td>Tarehe</td><td><b>${esc(p.tarehe)}</b></td></tr>
@@ -3805,13 +3823,15 @@ function printReceipt(sid,i){
    <tr><td>Njia ya malipo</td><td>${esc(p.njia||'-')}</td><td>Rejea</td><td>${esc(p.rejea||'-')}</td></tr></tbody></table>
    <div style="text-align:center;background:#F4E6C8;border-radius:10px;padding:10px;margin:10px 0"><div class="small">KIASI KILICHOLIPWA</div><div style="font:700 26px 'Fraunces',serif;color:#123350">${tzs(p.kiasi)}</div></div>
    <table><tbody><tr><td>Ada jumla</td><td>${tzs(f.ada_jumla||0)}</td><td>Imelipwa hadi sasa</td><td>${tzs(paidTo)}</td><td>Salio</td><td><b>${tzs(bal)}</b></td></tr></tbody></table>
-   <div style="text-align:center;margin-top:12px">${barcodeSVG(receiptPayload(p,i,s),44)}<div class="small">Scan barcode kuthibitisha malipo haya (Malipo → Thibitisha Risiti)</div></div>
+   <div style="text-align:center;margin-top:12px">${qr}<div class="small">Scan kwa kamera ya simu kuthibitisha malipo haya</div></div>
    <div style="display:flex;justify-content:space-between;margin-top:14px;font-size:12px"><div>Imepokelewa na: <b>${esc(p.na||'')}</b><div style="border-top:1px solid #999;margin-top:20px;width:170px" class="small">Sahihi/Muhuri</div></div><div class="small" style="text-align:right;max-width:240px">${accountsHTML()}</div></div></div>`;
   p.printCount=(p.printCount||0)+1; persist();
   printSection('receiptContent','Risiti '+receiptNo(p,i)+' — '+s.jina);
 }
 function verifyReceipt(){
-  const raw=$('vrIn').value.trim(); if(!raw){ return; } const parts=raw.split('|'), no=parts[0].trim(); let found=null;
+  let raw=parseVerifyInput($('vrIn').value); if(!raw){ return; }
+  let parts=raw.split('|'); if(parts[0]==='R'){ parts=parts.slice(2); }
+  const no=parts[0].trim(); let found=null;
   Object.entries(DB.fees).forEach(([sid,f])=>(f.malipo||[]).forEach((p,i)=>{ if(receiptNo(p,i)===no) found={sid,p,i}; }));
   if(!found){ $('vrOut').innerHTML='<div class="note-box" style="border-color:var(--bad)">❌ Risiti hii haipo kwenye kumbukumbu za taasisi hii.</div>'; return; }
   const s=DB.students.find(x=>x.id===found.sid)||{}, exp=receiptPayload(found.p,found.i,s).split('|'); const okAll=parts.length<4||parts.every((x,k)=>x.trim()===exp[k]);
@@ -4330,6 +4350,71 @@ function renderSchoolForms(){
     ${slotCard('admissionLetter','Barua ya Kudahiliwa / Admission Letter','Pakia kiolezo cha barua yenu ya kudahiliwa. Itachapishwa kama ilivyo (bado itahitaji kujazwa jina la mwanafunzi kwa mkono, au uhariri faili kabla ya kupakia).')}
     <p class="small">⚠️ Faili kubwa (zaidi ya ~700KB) hazitapakiwa — mfumo utaibana picha kiotomatiki, lakini PDF kubwa yabidi ipunguzwe ukubwa kwanza.</p>`;
 }
+
+// ===== v9 (QR code + public verify) =====
+// ================= QR CODE (badala ya barcode ndefu) + KUTHIBITISHA BILA LOGIN =================
+async function qrImgTag(text, size){
+  size = size || 130;
+  if(typeof QRCode !== 'undefined'){
+    try{ const url = await QRCode.toDataURL(text, {width:size, margin:1, errorCorrectionLevel:'M'}); return `<img src="${url}" style="width:${size}px;height:${size}px">`; }catch(e){}
+  }
+  return barcodeSVG(text, 40); // salama: rudi kwenye barcode ya zamani kama QR haijapatikana (mf. hakuna intaneti)
+}
+function verifyBaseURL(){ return location.origin + location.pathname; }
+function receiptVerifyURL(payload){ return verifyBaseURL() + '?pv=' + encodeURIComponent('R|'+currentInstId+'|'+payload); }
+function certVerifyURL(certNo){ return verifyBaseURL() + '?pv=' + encodeURIComponent('C|'+currentInstId+'|'+certNo); }
+function parseVerifyInput(raw){
+  raw = (raw||'').trim();
+  const m = raw.match(/[?&]pv=([^&]+)/);
+  if(m){ try{ return decodeURIComponent(m[1]); }catch(e){} }
+  return raw;
+}
+async function runPublicVerify(payload){
+  const box = $('pubVerifyScreen'); box.style.display='flex';
+  const parts = payload.split('|'); const type = parts[0];
+  if((type!=='R'&&type!=='C') || !parts[1]){ $('pvTitle').textContent='❌ Kiungo Hakitambuliki'; $('pvOut').innerHTML='<div class="note-box" style="border-color:var(--bad)">Kiungo hiki cha uthibitisho si sahihi au kimeharibika.</div>'; return; }
+  const instId = parts[1];
+  const school = await readKey(instId,'school');
+  const schoolName = school ? (school.jina||'Taasisi') : 'Taasisi';
+  if(type==='R'){
+    $('pvTitle').textContent = '🧾 Uthibitisho wa Risiti';
+    const [,, no, regNo, kiasi, tarehe] = parts;
+    const fees = await readKey(instId,'fees'); const students = await readKey(instId,'students');
+    let found=null;
+    if(fees) Object.entries(fees).forEach(([sid,f])=>(f.malipo||[]).forEach((p,i)=>{ const pn = p.no || ('0000'+(i+1)).slice(-6).toUpperCase(); if(pn===no) found={sid,p}; }));
+    if(!found){ $('pvOut').innerHTML = `<div class="note-box" style="border-color:var(--bad)">❌ Risiti <b>${esc(no)}</b> haipatikani kwenye kumbukumbu za <b>${esc(schoolName)}</b>.</div>`; return; }
+    const s = (students||[]).find(x=>x.id===found.sid) || {};
+    const okAll = (s.regNo||'')===(regNo||'') && String(Math.round(found.p.kiasi))===(kiasi||'') && String(found.p.tarehe||'').replace(/-/g,'')===(tarehe||'');
+    $('pvOut').innerHTML = `<div class="note-box" style="border-color:${okAll?'var(--good)':'var(--accent)'}">${okAll?'✅ <b>Risiti Halali</b>':'⚠️ <b>Taarifa hazilingani kabisa</b> (huenda imebadilishwa)'}
+      <div style="margin-top:8px;text-align:left">
+      <div><b>Taasisi:</b> ${esc(schoolName)}</div>
+      <div><b>Mwanafunzi:</b> ${esc(s.jina||'-')}</div>
+      <div><b>Kiasi:</b> ${tzs(found.p.kiasi)}</div>
+      <div><b>Tarehe:</b> ${esc(found.p.tarehe||'-')}</div>
+      <div><b>Aina:</b> ${esc(found.p.aina||'-')}</div>
+      <div><b>Risiti Na.:</b> ${esc(no)}</div>
+      </div></div>`;
+  } else {
+    $('pvTitle').textContent = '🏅 Uthibitisho wa Cheti';
+    const no = parts[2];
+    const certs = await readKey(instId,'certificates');
+    const c = (certs||[]).find(x=>x.no===no);
+    if(!c){ $('pvOut').innerHTML = `<div class="note-box" style="border-color:var(--bad)">❌ Cheti <b>${esc(no)}</b> hakipatikani kwenye kumbukumbu za <b>${esc(schoolName)}</b>.</div>`; return; }
+    $('pvOut').innerHTML = `<div class="note-box" style="border-color:var(--good)">✅ <b>Cheti Halali</b>
+      <div style="margin-top:8px;text-align:left">
+      <div><b>Taasisi:</b> ${esc(schoolName)}</div>
+      <div><b>Mwanafunzi:</b> ${esc(c.studentJina)}</div>
+      <div><b>Programu:</b> ${esc(c.program)}</div>
+      <div><b>Wastani:</b> ${fmt1(c.avg)}% (Daraja ${esc(c.grade)})</div>
+      <div><b>Tarehe ya Kuhitimu:</b> ${esc(c.dateGrad)}</div>
+      <div><b>Cheti Na.:</b> ${esc(c.no)}</div>
+      </div></div>`;
+  }
+}
+(function(){
+  const pv = new URLSearchParams(location.search).get('pv');
+  if(pv){ document.addEventListener('DOMContentLoaded', ()=>{ runPublicVerify(pv).catch(()=>{}); }); }
+})();
 
 loadAll();
 </script>
