@@ -686,6 +686,7 @@ Said Kassim|Mlinzi"></textarea>
         <button class="btn" style="margin-top:6px" onclick="staffBulkAdd()">Ongeza Wote</button>
       </div>
       <div class="card">
+        <input class="searchbar" id="staffSearch" placeholder="Tafuta mfanyakazi kwa jina..." oninput="renderStaffTable(this.value)">
         <table><thead><tr><th>Jina</th><th>Nafasi</th><th>Aina ya Mkataba</th><th>Mshahara Msingi</th><th>Simu</th><th></th></tr></thead>
         <tbody id="staffTbody"></tbody></table>
       </div>
@@ -811,6 +812,7 @@ Said Kassim|Mlinzi"></textarea>
         <button class="btn" onclick="openUserModal()">+ Sajili Mtumiaji</button></div>
       <div class="note-box">Kumbuka: mfumo huu ni wa ndani ya kivinjari — nenosiri huhifadhiwa kama maandishi ya wazi kwenye hifadhi ya pamoja. Usitumie nenosiri unalotumia mahali pengine muhimu.</div>
       <div class="card">
+        <input class="searchbar" id="userSearch" placeholder="Tafuta mtumiaji kwa jina..." oninput="renderUserTable(this.value)">
         <div class="table-scroll"><table><thead><tr><th>Jina</th><th>Barua Pepe</th><th>Wadhifa</th><th>Somo (kama Mwalimu)</th><th>Anaruhusiwa Kuona</th><th></th></tr></thead><tbody id="userTbody"></tbody></table></div>
         <p class="small">Nafasi za uongozi (Mwalimu Mkuu, Matron, n.k.) sasa zinapangwa kwenye ukurasa wa <b>"Nafasi za Uongozi"</b> kando.</p>
       </div>
@@ -820,6 +822,7 @@ Said Kassim|Mlinzi"></textarea>
     <div class="page" id="page-leadership">
       <div class="page-header"><div><h1>Nafasi za Uongozi</h1><p>Wapangie watumiaji nafasi za uongozi wa shule — Mwalimu Mkuu, Matron, Mwalimu wa Zamu n.k.</p></div></div>
       <div class="note-box">Mtu mmoja anaweza kushika nafasi zaidi ya moja. Mabadiliko yanahifadhiwa mara tu unapobofya "Hifadhi Nafasi" kwenye kadi ya mhusika.</div>
+      <input class="searchbar" id="leadershipSearch" placeholder="Tafuta kwa jina..." oninput="renderLeadershipPage(this.value)">
       <div id="leadershipWrapPage"></div>
     </div>
 
@@ -1603,9 +1606,10 @@ async function saveUser(){
   closeModal('userModal');
   renderUserTable();
 }
-function renderUserTable(){
+function renderUserTable(filter){
   const tb = document.getElementById('userTbody');
-  tb.innerHTML = DB.users.length ? DB.users.map(u=>`
+  const list = filter ? DB.users.filter(u=>u.jina.toLowerCase().includes(filter.toLowerCase())) : DB.users;
+  tb.innerHTML = list.length ? list.map(u=>`
     <tr><td>${u.jina}</td><td>${u.email}</td><td><span class="pill neutral">${u.role}</span></td><td>${u.subject||'-'}</td>
     <td>${(u.permissions||defaultPermsForRole(u.role)).map(k=>`<span class="pill neutral" style="margin:1px">${(PAGE_PERMS.find(p=>p.key===k)||{}).label||k}</span>`).join(' ')||'-'}</td>
     <td class="row-actions"><button class="btn sm ghost" onclick="openUserModal('${u.id}')">Hariri</button>${u.id===currentUser.id?'<span class="small">(Wewe)</span>':`<button class="btn sm danger" onclick="deleteUser('${u.id}')">Futa</button>`}</td></tr>`).join('') : `<tr><td colspan="6" class="empty">Hakuna watumiaji.</td></tr>`;
@@ -1836,10 +1840,14 @@ async function stuBulkAdd(){
   if(!lines.length){ alert('Weka majina kwanza, mstari mmoja kwa kila mwanafunzi.'); return; }
   const ng = ngaziOfClass(stuClass) || stuClass; let n=0;
   lines.forEach((line,idx)=>{
-    const parts = line.split('|'); const jina = (parts[0]||'').trim(); if(!jina) return;
-    const jr = (parts[1]||'').trim();
+    const p = line.split('|').map(x=>x.trim());
+    const jina = p[0]; if(!jina) return;
+    const jr = p[1]||'';
     const jinsia = /^(m|mvulana|male)/i.test(jr) ? 'Mvulana' : /^(k|f|msichana|female)/i.test(jr) ? 'Msichana' : '';
-    DB.students.push({id:uid()+idx, jina, regNo:nextRegNo(), jinsia, dob:'', ngazi:ng, darasa:stuClass, join:todayStr(), mzazi:{jina:'',simu:'',anaishi:''}, makazi:'', afya:'', bweni:false, mahitaji:{}});
+    const id = uid()+idx;
+    DB.students.push({id, jina, regNo: p[2]||nextRegNo(), jinsia, dob: p[3]||'', ngazi: ng, darasa: stuClass, join: p[4]||todayStr(),
+      mzazi:{jina: p[5]||'', simu: p[6]||'', anaishi: p[7]||''}, makazi: p[8]||'', afya:'', bweni:false, mahitaji:{}});
+    if(p[9]) DB.fees[id] = {ada_jumla: parseFloat(p[9])||0, malipo:[]};
     n++;
   });
   await persist(); $('stuBulkText').value=''; renderPfTabs(); alert('Wanafunzi '+n+' wameongezwa kwenye '+stuClass+'.');
@@ -2235,11 +2243,14 @@ function staffNafasiLabel(s){
   if(s.nafasi==='Mwalimu' && s.masomo && s.masomo.length) return `Mwalimu (${s.masomo.join(', ')})`;
   return s.nafasi||'-';
 }
-function renderStaffTable(){
+function renderStaffTable(filter){
   const tb = document.getElementById('staffTbody');
-  tb.innerHTML = DB.staff.length ? DB.staff.map(s=>`
+  let list = DB.staff;
+  if(filter) list = list.filter(s=>s.jina.toLowerCase().includes(filter.toLowerCase()));
+  if(!list.length){ tb.innerHTML = `<tr><td colspan="6" class="empty">${DB.staff.length?'Hakuna aliyepatikana kwa "'+esc(filter)+'".':'Hakuna mfanyakazi aliyesajiliwa.'}</td></tr>`; return; }
+  tb.innerHTML = list.map(s=>`
     <tr><td>${s.picha?`<img src="${s.picha}" style="width:30px;height:30px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">`:''}${esc(s.jina)}${s.noAjira?`<div class="small">${esc(s.noAjira)}</div>`:''}</td><td>${staffNafasiLabel(s)}</td><td>${s.mkataba?.aina||'-'}</td><td>${(s.mkataba?.mshahara||0).toLocaleString()}</td><td>${s.simu||'-'}</td>
-    <td class="row-actions"><button class="btn sm ghost" onclick="openStaffModal('${s.id}')">Hariri</button><button class="btn sm danger" onclick="deleteStaff('${s.id}')">Futa</button></td></tr>`).join('') : `<tr><td colspan="6" class="empty">Hakuna mfanyakazi aliyesajiliwa.</td></tr>`;
+    <td class="row-actions"><button class="btn sm ghost" onclick="openStaffModal('${s.id}')">Hariri</button><button class="btn sm danger" onclick="deleteStaff('${s.id}')">Futa</button></td></tr>`).join('');
 }
 async function deleteStaff(id){
   if(!confirm('Futa mfanyakazi huyu?')) return;
@@ -2545,9 +2556,10 @@ async function toggleBoarding(sid, val){
 }
 
 // ---------- LEADERSHIP POSITIONS PAGE ----------
-function renderLeadershipPage(){
+function renderLeadershipPage(filter){
   const wrap = document.getElementById('leadershipWrapPage');
   if(!DB.users.length && !DB.staff.length){ wrap.innerHTML = '<p class="empty">Sajili watumiaji au wafanyakazi kwanza.</p>'; return; }
+  const matches = p => !filter || p.jina.toLowerCase().includes(filter.toLowerCase());
   const card = (person, kind) => `
     <div class="card">
       <h3 style="display:flex;justify-content:space-between;align-items:center;">
@@ -2559,7 +2571,8 @@ function renderLeadershipPage(){
       </div>
       <button class="btn sm" style="margin-top:10px" onclick="saveLeadershipFor('${kind}','${person.id}')">Hifadhi Nafasi</button>
     </div>`;
-  wrap.innerHTML = DB.users.map(u=>card(u,'user')).join('') + DB.staff.map(s=>card(s,'staff')).join('');
+  const html = DB.users.filter(matches).map(u=>card(u,'user')).join('') + DB.staff.filter(matches).map(s=>card(s,'staff')).join('');
+  wrap.innerHTML = html || `<p class="empty">Hakuna aliyepatikana kwa "${esc(filter)}".</p>`;
 }
 function onLdPosChange(kind,id){
   const checked = Array.from(document.querySelectorAll('.ldPos_'+kind+'_'+id+':checked')).map(c=>c.value);
@@ -3365,13 +3378,13 @@ async function runPromotion(){
 
 // ================= KUPAKIA WANAFUNZI KWA CSV =================
 function openCsvImport(){
-  openGM('Pakia Wanafunzi kwa CSV', `<p class="small">Safu kwa mpangilio: <b>jina, jinsia, ngazi, darasa, jina la mzazi, simu ya mzazi, anapoishi mzazi, makazi ya mwanafunzi, ada</b>. Mstari wa kwanza unaweza kuwa vichwa vya safu.</p>
+  openGM('Pakia Wanafunzi kwa CSV', `<p class="small">Safu kwa mpangilio: <b>jina, jinsia, namba ya usajili, tarehe ya kuzaliwa, tarehe ya kujiunga, jina la mzazi, simu ya mzazi, anapoishi mzazi, anapoishi mwanafunzi, ngazi, darasa, ada</b>. Zote isipokuwa jina ni hiari (zikiachwa wazi, mfumo utajaza chaguo-msingi). Mstari wa kwanza unaweza kuwa vichwa vya safu.</p>
     <input type="file" id="csvFile" accept=".csv,.txt">
     <div class="field" style="margin-top:8px"><label>Au bandika hapa</label><textarea id="csvText" rows="6"></textarea></div>
     <div class="row-actions"><button class="btn ghost" onclick="downloadCsvTemplate()">⬇️ Pakua Kiolezo</button><button class="btn" onclick="runCsvImport()">Ingiza Wanafunzi</button></div>`);
 }
 async function downloadCsvTemplate(){
-  await saveFile('\ufeffjina,jinsia,ngazi,darasa,mzazi,simu,anapoishi_mzazi,makazi,ada\nAsha Juma,Msichana,Msingi (Primary),Darasa la 5,Juma Ali,0712345678,Dodoma,Dodoma,300000\n', 'kiolezo_wanafunzi.csv', 'text/csv');
+  await saveFile('\ufeffjina,jinsia,namba_usajili,tarehe_kuzaliwa,tarehe_kujiunga,jina_mzazi,simu_mzazi,anapoishi_mzazi,anapoishi_mwanafunzi,ngazi,darasa,ada\nAsha Juma,Msichana,STD2026/010,2012-03-15,2026-01-10,Juma Ali,0712345678,Dodoma,Dodoma,Msingi (Primary),Darasa la 5,300000\n', 'kiolezo_wanafunzi.csv', 'text/csv');
 }
 async function runCsvImport(){
   let text = $('csvText').value; const f = $('csvFile').files[0]; if(f) text = await f.text();
@@ -3383,8 +3396,8 @@ async function runCsvImport(){
     const c = l.split(/[,;\t]/).map(x=>x.trim().replace(/^"|"$/g,'')); if(!c[0]) return;
     const jinsia = /^(f|msichana|female|k)/i.test(c[1]||'') ? 'Msichana' : 'Mvulana';
     const id = uid()+n;
-    DB.students.push({id, jina:c[0], regNo:nextRegNo(), jinsia, dob:'', ngazi:c[2]||'', darasa:c[3]||'', join:todayStr(), mzazi:{jina:c[4]||'', simu:c[5]||'', anaishi:c[6]||''}, makazi:c[7]||'', afya:'', mahitaji:{}});
-    DB.fees[id] = {ada_jumla:parseFloat(c[8])||0, malipo:[]}; n++;
+    DB.students.push({id, jina:c[0], regNo:c[2]||nextRegNo(), jinsia, dob:c[3]||'', ngazi:c[9]||'', darasa:c[10]||'', join:c[4]||todayStr(), mzazi:{jina:c[5]||'', simu:c[6]||'', anaishi:c[7]||''}, makazi:c[8]||'', afya:'', mahitaji:{}});
+    DB.fees[id] = {ada_jumla:parseFloat(c[11])||0, malipo:[]}; n++;
   });
   await persist(); await logAction('ingiza','Wanafunzi','Ameingiza wanafunzi '+n+' kwa CSV');
   closeModal('genericModal'); renderStudentTable(); alert('Wanafunzi '+n+' wameingizwa.');
@@ -3786,11 +3799,13 @@ function renderPfTabs(){
 function renderStuBulkCard(){
   const canBulk = canEditData();
   $('stuBulkCard').innerHTML = canBulk ? `<h3>📋 Pakia Majina kwa Wingi — ${esc(stuClass)}</h3>
-    <p class="small">Jina moja kwa mstari. Jinsia ni hiari baada ya "|" (M/Mvulana au K/Msichana), mfano: <code>Juma Ali|M</code></p>
-    <textarea id="stuBulkText" rows="5" style="width:100%;font-family:monospace" placeholder="Juma Ali|M
+    <p class="small">Mstari mmoja kwa kila mwanafunzi, ukitenganisha kwa "<b>|</b>". <b>Jina pekee ndilo la lazima</b> — zingine zote ni hiari (ziache wazi ukitaka, mfumo utajaza chaguo-msingi).</p>
+    <p class="small" style="font-family:monospace;background:var(--bg-soft,#F4EFE3);padding:6px 8px;border-radius:6px">Jina | Jinsia(M/K) | Namba ya Usajili | Tarehe ya Kuzaliwa | Tarehe ya Kujiunga | Jina la Mzazi | Simu ya Mzazi | Anapoishi Mzazi | Anapoishi Mwanafunzi | Ada Inayotakiwa</p>
+    <details style="margin-bottom:6px"><summary class="small" style="cursor:pointer">Angalia mfano kamili</summary><p class="small">Juma Ali | M | STD2026/011 | 2012-04-10 | 2026-01-10 | Ali Hassan | 0712345678 | Dodoma | Dodoma | 300000</p></details>
+    <textarea id="stuBulkText" rows="5" style="width:100%;font-family:monospace" placeholder="Juma Ali|M|STD2026/011|2012-04-10|2026-01-10|Ali Hassan|0712345678|Dodoma|Dodoma|300000
 Asha Said|K
 Rehema Yusuf"></textarea>
-    <button class="btn" style="margin-top:6px" onclick="stuBulkAdd()">Ongeza Wote kwenye ${esc(stuClass)}</button>` : '';
+    <div class="row-actions" style="margin-top:6px"><button class="btn" onclick="stuBulkAdd()">Ongeza Wote kwenye ${esc(stuClass)}</button><button class="btn ghost" onclick="openCsvImport()">📥 Au Pakia Faili la CSV Badala Yake</button></div>` : '';
 }
 function renderPfStats(){
   const st=classStudents(stuClass), g=st.filter(s=>s.jinsia==='Msichana').length, b=st.filter(s=>s.bweni).length, subj=DB.subjects.filter(s=>sameClass(s.darasa,stuClass)).length;
