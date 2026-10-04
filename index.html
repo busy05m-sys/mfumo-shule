@@ -436,6 +436,7 @@ Minimum version required to store current data is: `+i+`.
 
   <div id="main">
 
+    <div id="saveErrBar" style="display:none;background:#B14A34;color:#fff;padding:10px 16px;border-radius:10px;margin-bottom:14px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><b id="saveErrText"></b><button class="btn sm ghost" style="color:#fff;border-color:#fff" onclick="document.getElementById('saveErrBar').style.display='none'">✕</button></div>
     <div id="subWarnBar" style="display:none;background:#F4B400;color:#3a2a00;padding:10px 16px;border-radius:10px;margin-bottom:14px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
       <div><b id="subWarnText">⚠️ Muda unakaribia kuisha.</b> <span class="small">Lipa kabla mfumo haujazimika.</span></div>
       <div class="row-actions"><button class="btn sm" onclick="openPaymentReminder()">💳 Lipa Sasa</button><button class="btn sm ghost" onclick="closeSubWarning()">✕</button></div>
@@ -458,9 +459,10 @@ Minimum version required to store current data is: `+i+`.
           </div>
         </div>
       </div>
+      <div class="card" id="dataHealthCard" style="display:none"></div>
       <div class="grid g2">
         <div class="card">
-          <h3>Taarifa za Kiafya / Changamoto Maalum za Wanafunzi</h3>
+          <h3>🩺 Taarifa za Kiafya (Siri)</h3>
           <div id="healthAlerts"></div>
         </div>
         <div class="card">
@@ -1073,7 +1075,7 @@ Said Kassim|Mlinzi"></textarea>
     <div class="page" id="page-audit">
       <div class="page-header"><div><h1>Kumbukumbu (Audit Log)</h1><p>Historia ya kuingia (login) na maudhui yote yaliyoingizwa, kubadilishwa au kufutwa</p></div>
         <div class="row-actions"><button class="btn ghost" onclick="exportAudit('csv')">⬇️ CSV</button><button class="btn ghost" onclick="exportAudit('json')">⬇️ JSON</button></div></div>
-      <div class="note-box">Kumbukumbu hizi zinahifadhiwa kiotomatiki na <b>hakuna kitufe cha kuzifuta</b> ndani ya mfumo. Zinahifadhi rekodi 10,000 za mwisho.</div>
+      <div class="note-box">Kumbukumbu hizi zinahifadhiwa kiotomatiki na <b>hakuna kitufe cha kuzifuta</b> ndani ya mfumo. Zinahifadhi rekodi za mwisho (hadi 10,000, au hadi ukomo wa ukubwa wa hifadhi). Ni <b>Msimamizi wa Huduma (Admin Mkuu)</b> pekee anayeweza kuzifuta.</div>
       <div class="tabbar" id="auTabs"></div>
       <div class="card">
         <div class="grid g4">
@@ -1374,23 +1376,30 @@ async function appendAudit(list){
   const latest = (await readKey(currentInstId,'audit')) || DB.audit || [];
   let merged = latest.concat(list);
   if(merged.length>10000) merged = merged.slice(-10000);
-  DB.audit = merged;
-  const str = JSON.stringify(merged); SNAP.audit = str;
+  let str = JSON.stringify(merged);
+  while(str.length>900000 && merged.length>50){ merged = merged.slice(Math.ceil(merged.length*0.1)); str = JSON.stringify(merged); }
+  DB.audit = merged; SNAP.audit = str;
   try{ await window.storage.set(ikey('audit'), str, true); }catch(e){ console.error(e); }
 }
 async function logAction(action, modul, detail){ await appendAudit([mkEntry(action,modul,detail)]); }
 async function persist(){
   if(!currentInstId || !DB) return;
-  const entries = [];
+  const entries = []; let anyFail = false, usersChanged = false;
   for(const k of DB_KEYS){
     if(k==='audit') continue;
     const now = JSON.stringify(DB[k]);
-    if(now!==SNAP[k]){
-      let oldVal=null; try{ oldVal = SNAP[k]?JSON.parse(SNAP[k]):null; }catch(e){}
+    if(now===SNAP[k]) continue;
+    let oldVal=null; try{ oldVal = SNAP[k]?JSON.parse(SNAP[k]):null; }catch(e){}
+    try{
+      const merged = await mergeForWrite(k, oldVal, DB[k]);
+      const str = JSON.stringify(merged);
+      await window.storage.set(ikey(k), str, true);
       entries.push(...diffEntries(k, oldVal, DB[k]));
-      try{ await window.storage.set(ikey(k), now, true); SNAP[k]=now; }catch(e){ console.error("storage error",k,e); }
-    }
+      DB[k] = merged; SNAP[k] = str; if(k==='users') usersChanged = true;
+    }catch(e){ anyFail = true; notifyStorageError(k,e); }
   }
+  if(usersChanged && currentUser){ currentUser = DB.users.find(u=>u.id===currentUser.id) || currentUser; }
+  if(!anyFail) hideStorageError();
   if(entries.length) await appendAudit(entries);
 }
 async function syncFromStorage(){
@@ -1505,6 +1514,7 @@ function enterApp(){
   applyRoleVisibility();
   document.getElementById('repFrom').value = currentUser.email;
   checkSubscriptionGate();
+  migratePhotos().catch(()=>{});
   init();
 }
 function toggleMobileNav(){
@@ -1765,7 +1775,7 @@ function openStudentModal(id, presetDarasa){
   document.getElementById('stAda').value = DB.fees[id]?.ada_jumla || '';
   document.getElementById('stAfya').value = s?.afya||'';
   $('stPhotoIn').value='';
-  $('stPhotoPreview').innerHTML = s?.picha ? `<img src="${s.picha}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">` : '<span class="small">Hakuna picha bado.</span>';
+  renderPhotoPreview('stPhotoPreview', s, 's_');
   renderStSubjectsPicker(s?.darasa||presetDarasa||'', s?.masomo||[]);
   document.getElementById('studentModal').classList.add('show');
 }
@@ -1773,7 +1783,7 @@ let stPhotoData = undefined;
 async function stPhotoUpload(){
   const file = $('stPhotoIn').files[0]; if(!file){ return; }
   if(!file.type.startsWith('image/')){ alert('Tumia picha pekee (JPG/PNG).'); return; }
-  let dataUrl = await sfReadAsDataURL(file); dataUrl = await sfCompressImage(dataUrl, 400);
+  let dataUrl = await sfReadAsDataURL(file); dataUrl = await sfCompressImage(dataUrl, 200, 30*1024);
   stPhotoData = dataUrl;
   $('stPhotoPreview').innerHTML = `<img src="${dataUrl}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`;
 }
@@ -1786,6 +1796,8 @@ async function saveStudent(){
   const id = document.getElementById('stId').value || uid();
   const jina = document.getElementById('stJina').value.trim();
   if(!jina){ alert('Tafadhali jaza jina la mwanafunzi.'); return; }
+  let pichaVal = (DB.students.find(x=>x.id===id)||{}).picha||null;
+  if(stPhotoData!==undefined){ await savePhoto('s_'+id, stPhotoData); pichaVal='1'; }
   const obj = {
     id, jina,
     regNo: document.getElementById('stRegNo').value.trim() || nextRegNo(),
@@ -1800,7 +1812,7 @@ async function saveStudent(){
     bweni: document.getElementById('stBweni').value==='1',
     mahitaji: (DB.students.find(x=>x.id===id)?.mahitaji) || {},
     masomo: Array.from(document.querySelectorAll('.stSubjChk:checked')).map(c=>c.value),
-    picha: stPhotoData!==undefined ? stPhotoData : ((DB.students.find(x=>x.id===id)||{}).picha||null)
+    picha: pichaVal
   };
   stPhotoData = undefined;
   const idx = DB.students.findIndex(x=>x.id===id);
@@ -1860,7 +1872,7 @@ function renderStudentTable(filter){
   if(!list.length){ tb.innerHTML = `<tr><td colspan="6" class="empty">Hakuna mwanafunzi aliyesajiliwa bado.</td></tr>`; return; }
   tb.innerHTML = list.map(s=>`
     <tr>
-      <td>${s.picha?`<img src="${s.picha}" style="width:28px;height:28px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">`:''}<b>${esc(s.jina)}</b><div class="small">${esc(s.regNo||'')} · ${esc(s.jinsia||'')}</div></td>
+      <td>${photoTag(s,'s_',28,6,'vertical-align:middle;margin-right:6px')}<b>${esc(s.jina)}</b><div class="small">${esc(s.regNo||'')} · ${esc(s.jinsia||'')}</div></td>
       <td>${s.ngazi||'-'}<div class="small">${s.darasa||''}</div></td>
       <td>${s.mzazi?.jina||'-'}</td>
       <td>${s.mzazi?.simu||'-'}</td>
@@ -1871,11 +1883,12 @@ function renderStudentTable(filter){
         ${smsButtonForStudent(s,'general')}
       </td>
     </tr>`).join('');
+  hydratePhotos(tb);
 }
 async function deleteStudent(id){
   if(!confirm('Una uhakika unataka kumfuta mwanafunzi huyu?')) return;
   DB.students = DB.students.filter(s=>s.id!==id);
-  delete DB.fees[id];
+  delete DB.fees[id]; delPhoto('s_'+id);
   await persist('students'); await persist('fees');
   if(stuClass && $('stu-roster').style.display!=='none') renderPfTabs(); else renderStudentTable();
 }
@@ -2045,18 +2058,20 @@ function maoni(avg){
 function renderDash(){
   const subEl = document.getElementById('dashSub');
   if(subEl) subEl.textContent = (DB.school.mwakaMasomo||DB.school.muhula) ? `Mwaka wa Masomo: ${DB.school.mwakaMasomo||'—'} · ${DB.school.muhula||''}` : 'Muhtasari wa jumla wa shule';
+  const act = activeStudents();
   document.getElementById('statCards').innerHTML = `
-    <div class="stat"><div class="num">${DB.students.length}</div><div class="lbl">Wanafunzi Waliosajiliwa</div></div>
+    <div class="stat"><div class="num">${act.length}</div><div class="lbl">Wanafunzi Waliosajiliwa</div></div>
     <div class="stat"><div class="num">${DB.staff.length}</div><div class="lbl">Wafanyakazi</div></div>
     <div class="stat"><div class="num">${DB.exams.length}</div><div class="lbl">Mitihani Iliyopangwa</div></div>
-    <div class="stat"><div class="num">${Object.keys(DB.fees).filter(k=>{const f=DB.fees[k];const paid=(f.malipo||[]).reduce((a,b)=>a+Number(b.kiasi||0),0);return paid<(f.ada_jumla||0);}).length}</div><div class="lbl">Wenye Deni la Ada</div></div>
+    <div class="stat"><div class="num">${act.filter(s=>{const f=DB.fees[s.id]; if(!f) return false; const paid=(f.malipo||[]).reduce((a,b)=>a+Number(b.kiasi||0),0); return paid<(f.ada_jumla||0);}).length}</div><div class="lbl">Wenye Deni la Ada</div></div>
   `;
-  const ranked = DB.students.map(s=>({s, avg: overallStudentAverage(s.id)})).filter(x=>x.avg!==null).sort((a,b)=>b.avg-a.avg);
+  const ranked = act.map(s=>({s, avg: overallStudentAverage(s.id)})).filter(x=>x.avg!==null).sort((a,b)=>b.avg-a.avg);
   const top = ranked.slice(0,3), bottom = ranked.slice(-3).reverse();
   document.getElementById('topList').innerHTML = top.length? top.map((r,i)=>`<li><span><span class="medal">${['🥇','🥈','🥉'][i]}</span>${r.s.jina}</span><span>${r.avg.toFixed(1)}%</span></li>`).join('') : '<li>Hakuna alama bado</li>';
   document.getElementById('bottomList').innerHTML = bottom.length? bottom.map(r=>`<li><span>${r.s.jina}</span><span>${r.avg.toFixed(1)}%</span></li>`).join('') : '<li>Hakuna alama bado</li>';
-  const healthList = DB.students.filter(s=>s.afya && s.afya.trim());
-  document.getElementById('healthAlerts').innerHTML = healthList.length ? healthList.map(s=>`<div style="padding:6px 0;border-bottom:1px solid var(--border)"><b>${s.jina}</b> (${s.ngazi||''}) — ${s.afya}</div>`).join('') : '<p class="small">Hakuna taarifa za changamoto za kiafya zilizosajiliwa.</p>';
+  const healthN = act.filter(s=>s.afya && s.afya.trim()).length;
+  document.getElementById('healthAlerts').innerHTML = `<p class="small">${healthN?`Wanafunzi <b>${healthN}</b> wana taarifa za kiafya/changamoto zilizosajiliwa. Kwa heshima na usiri wa wanafunzi, majina hayaonyeshwi hapa.`:'Hakuna taarifa za changamoto za kiafya zilizosajiliwa.'}</p><button class="btn sm" onclick="openHealthInfo()">🔒 Fungua Taarifa za Kiafya</button>`;
+  renderDataHealth();
   renderLeadershipCard();
   renderDashTodo();
 }
@@ -2185,7 +2200,7 @@ function openStaffModal(id){
   document.getElementById('sfIdType').value = s?.idType||'Kitambulisho cha Taifa (NIDA)';
   document.getElementById('sfIdNo').value = s?.idNo||'';
   $('sfPhotoIn').value = '';
-  $('sfPhotoPreview').innerHTML = s?.picha ? `<img src="${s.picha}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">` : '<span class="small">Hakuna picha bado.</span>';
+  renderPhotoPreview('sfPhotoPreview', s, 'f_');
   onStaffPositionChange();
   document.getElementById('staffModal').classList.add('show');
 }
@@ -2193,7 +2208,7 @@ let sfPhotoData = undefined;
 async function sfPhotoUpload(){
   const file = $('sfPhotoIn').files[0]; if(!file){ return; }
   if(!file.type.startsWith('image/')){ alert('Tumia picha pekee (JPG/PNG).'); return; }
-  let dataUrl = await sfReadAsDataURL(file); dataUrl = await sfCompressImage(dataUrl, 400);
+  let dataUrl = await sfReadAsDataURL(file); dataUrl = await sfCompressImage(dataUrl, 200, 30*1024);
   sfPhotoData = dataUrl;
   $('sfPhotoPreview').innerHTML = `<img src="${dataUrl}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`;
 }
@@ -2205,12 +2220,13 @@ async function saveStaff(){
   const masomo = nafasi==='Mwalimu' ? Array.from(document.getElementById('sfSubjects').selectedOptions).map(o=>o.value) : [];
   const nafasiNyingine = nafasi==='Nyingine' ? document.getElementById('sfNafasiNyingine').value.trim() : '';
   const existing = DB.staff.find(x=>x.id===id);
+  let pichaVal = existing?existing.picha:null; if(sfPhotoData!==undefined){ await savePhoto('f_'+id, sfPhotoData); pichaVal='1'; }
   const obj = {
     id, jina, nafasi, nafasiNyingine, masomo, simu: document.getElementById('sfSimu').value,
     email: document.getElementById('sfEmail').value, tareheAjiri: document.getElementById('sfTareheAjiri').value,
     mkataba: { aina: document.getElementById('sfAina').value, mwisho: document.getElementById('sfMkataba').value, mshahara: parseFloat(document.getElementById('sfMshahara').value)||0 },
     noAjira: document.getElementById('sfNoAjira').value.trim(), idType: document.getElementById('sfIdType').value, idNo: document.getElementById('sfIdNo').value.trim(),
-    picha: sfPhotoData!==undefined ? sfPhotoData : (existing?existing.picha:null),
+    picha: pichaVal,
     positions: existing?existing.positions:[], darasa: existing?existing.darasa:''
   };
   sfPhotoData = undefined;
@@ -2249,12 +2265,14 @@ function renderStaffTable(filter){
   if(filter) list = list.filter(s=>s.jina.toLowerCase().includes(filter.toLowerCase()));
   if(!list.length){ tb.innerHTML = `<tr><td colspan="6" class="empty">${DB.staff.length?'Hakuna aliyepatikana kwa "'+esc(filter)+'".':'Hakuna mfanyakazi aliyesajiliwa.'}</td></tr>`; return; }
   tb.innerHTML = list.map(s=>`
-    <tr><td>${s.picha?`<img src="${s.picha}" style="width:30px;height:30px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">`:''}${esc(s.jina)}${s.noAjira?`<div class="small">${esc(s.noAjira)}</div>`:''}</td><td>${staffNafasiLabel(s)}</td><td>${s.mkataba?.aina||'-'}</td><td>${(s.mkataba?.mshahara||0).toLocaleString()}</td><td>${s.simu||'-'}</td>
+    <tr><td>${photoTag(s,'f_',30,6,'vertical-align:middle;margin-right:6px')}${esc(s.jina)}${s.noAjira?`<div class="small">${esc(s.noAjira)}</div>`:''}</td><td>${staffNafasiLabel(s)}</td><td>${s.mkataba?.aina||'-'}</td><td>${(s.mkataba?.mshahara||0).toLocaleString()}</td><td>${s.simu||'-'}</td>
     <td class="row-actions"><button class="btn sm ghost" onclick="openStaffModal('${s.id}')">Hariri</button><button class="btn sm danger" onclick="deleteStaff('${s.id}')">Futa</button></td></tr>`).join('');
+  hydratePhotos(tb);
 }
 async function deleteStaff(id){
   if(!confirm('Futa mfanyakazi huyu?')) return;
   DB.staff = DB.staff.filter(s=>s.id!==id);
+  delPhoto('f_'+id);
   await persist('staff');
   renderStaffTable(); fillStaffSelect('lvStaff'); fillStaffSelect('prStaff');
 }
@@ -4410,7 +4428,7 @@ async function pmtSetKiasi(sid,val){
 async function pmtRename(sid,val){ const s = DB.students.find(x=>x.id===sid); if(!val.trim()) return; s.jina = val.trim(); await persist(); renderPmtList(); }
 async function pmtDelete(sid){
   const s = DB.students.find(x=>x.id===sid); if(!confirm(`Futa ${s.jina} kabisa (pamoja na taarifa zake za malipo)?`)) return;
-  DB.students = DB.students.filter(x=>x.id!==sid); delete DB.fees[sid]; await persist(); renderPmtList();
+  DB.students = DB.students.filter(x=>x.id!==sid); delete DB.fees[sid]; delPhoto('s_'+sid); await persist(); renderPmtList();
 }
 async function pmtApplyBulk(){
   const darasa = $('pmtDarasa').value; if(!darasa){ alert('Chagua darasa kwanza.'); return; }
@@ -4604,7 +4622,7 @@ async function renderSuperAdmin(){
     <td><b>${esc(r.inst.instName || r.school.jina || '(bila jina)')}</b><div class="small">${esc(r.inst.emails.join(', '))}</div></td>
     <td><span class="pill ${r.info.cls}">${esc(r.info.label)}</span></td>
     <td>${r.pending.length ? r.pending.map(p=>`<div class="small">📌 ${esc(p.ref)} ${p.note?'— '+esc(p.note):''} <span class="small">(${esc((p.submittedAt||'').slice(0,10))})</span></div>`).join('') : '<span class="small">—</span>'}</td>
-    <td class="row-actions"><button class="btn sm accent" onclick="saActivate('${r.inst.instId}')">✅ Washa</button><button class="btn sm danger" onclick="saDeactivate('${r.inst.instId}')">⛔ Zima</button><button class="btn sm ghost" onclick="saSetClasses('${r.inst.instId}')">🎓 Madarasa</button></td>
+    <td class="row-actions"><button class="btn sm accent" onclick="saActivate('${r.inst.instId}')">✅ Washa</button><button class="btn sm danger" onclick="saDeactivate('${r.inst.instId}')">⛔ Zima</button><button class="btn sm ghost" onclick="saSetClasses('${r.inst.instId}')">🎓 Madarasa</button><button class="btn sm danger" onclick="saOpenData('${r.inst.instId}')">🗑️ Data</button></td>
   </tr>`).join('') : '<tr><td colspan="4" class="empty">Hakuna taasisi bado.</td></tr>';
 }
 const SA_DURATIONS = [
@@ -4702,7 +4720,8 @@ async function saSaveClasses(instId){
 // ================= FOMU ZA SHULE (Upload: Fomu ya Kujiunga + Barua ya Kudahiliwa) =================
 const SF_MAXBYTES = 700*1024; // ~700KB raw, salama kwa kikomo cha 1MB cha hifadhidata
 function sfReadAsDataURL(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(file); }); }
-function sfCompressImage(dataUrl, maxW){
+function sfCompressImage(dataUrl, maxW, maxBytes){
+  maxBytes = maxBytes || SF_MAXBYTES;
   return new Promise((resolve)=>{
     const img = new Image();
     img.onload = ()=>{
@@ -4711,7 +4730,7 @@ function sfCompressImage(dataUrl, maxW){
       const canvas = document.createElement('canvas'); canvas.width=w; canvas.height=h;
       const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0,w,h);
       let q = 0.85, out = canvas.toDataURL('image/jpeg', q);
-      while(out.length*0.75 > SF_MAXBYTES && q > 0.35){ q -= 0.1; out = canvas.toDataURL('image/jpeg', q); }
+      while(out.length*0.75 > maxBytes && q > 0.35){ q -= 0.1; out = canvas.toDataURL('image/jpeg', q); }
       resolve(out);
     };
     img.onerror = ()=>resolve(dataUrl);
@@ -5008,6 +5027,245 @@ function renderSubjectRanking(){
   $('srOut').innerHTML = rows.length ? `${schoolHeadHTML('Taarifa ya Masomo Yaliyopata Alama Nzuri', d?('Darasa: '+d):'Shule Nzima')}
     <table><thead><tr><th>Nafasi</th><th>Somo</th><th>Wastani</th><th>Idadi ya Alama</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><b>${i+1}</b></td><td>${esc(r.jina)}</td><td>${fmt1(r.avg)}%</td><td>${r.n}</td></tr>`).join('')}</tbody></table>`
     : '<p class="empty">Hakuna alama zilizoingizwa bado.</p>';
+}
+
+// ===== v19 =====
+// ================= v19: usahihi wa data, kuunganisha mabadiliko, picha, ukaguzi, Admin Mkuu =================
+function activeStudents(){ return visibleStudents().filter(s=>!(s.darasa||'').trim() || instClassAllowed(s.darasa)); }
+
+// ---- Hitilafu za kuhifadhi zionekane (si kimya kimya) ----
+const MOD_LABELS={students:'Wanafunzi',fees:'Ada na Malipo',marks:'Alama',exams:'Mitihani',staff:'Wafanyakazi',school:'Taarifa za Shule',users:'Watumiaji',attendance:'Mahudhurio',payroll:'Mishahara',certificates:'Vyeti',applications:'Maombi',finance:'Fedha',parentReports:'Ripoti za Wazazi'};
+function notifyStorageError(k,e){
+  console.error('storage error',k,e);
+  const bar=document.getElementById('saveErrBar'); if(!bar) return;
+  document.getElementById('saveErrText').textContent=`⚠️ Imeshindwa kuhifadhi "${MOD_LABELS[k]||k}" — mabadiliko yako yanaweza kupotea au kurudi yalivyokuwa (huenda taarifa ni kubwa mno au mtandao umekatika). Jaribu tena; tatizo likiendelea wasiliana na msimamizi wa huduma.`;
+  bar.style.display='flex';
+}
+function hideStorageError(){ const bar=document.getElementById('saveErrBar'); if(bar) bar.style.display='none'; }
+
+// ---- Kuunganisha mabadiliko (vifaa/watumiaji wawili): kufuta/kuongeza/kuhariri hakupotei ----
+const MAP_DEPTH={fees:1,syllabus:1,classReps:1,marks:2,attendance:2};
+function isObj(x){ return x && typeof x==='object' && !Array.isArray(x); }
+function isIdArray(a){ return Array.isArray(a) && a.every(x=>x && typeof x==='object' && x.id!==undefined); }
+function mergeById(remote, base, local){
+  const baseMap=new Map(base.map(x=>[x.id,JSON.stringify(x)])), localMap=new Map(local.map(x=>[x.id,x]));
+  const removed=new Set(), changed=new Map(), added=[];
+  baseMap.forEach((js,id)=>{ if(!localMap.has(id)) removed.add(id); });
+  local.forEach(x=>{ if(!baseMap.has(x.id)) added.push(x); else if(JSON.stringify(x)!==baseMap.get(x.id)) changed.set(x.id,x); });
+  const out=remote.filter(x=>!removed.has(x.id)).map(x=>changed.has(x.id)?changed.get(x.id):x);
+  const have=new Set(out.map(x=>x.id)); added.forEach(x=>{ if(!have.has(x.id)) out.push(x); });
+  return out;
+}
+function mergeMapKeys(remote, base, local, depth){
+  const out=Object.assign({}, remote);
+  Object.keys(base).forEach(k=>{ if(!(k in local)) delete out[k]; });
+  Object.keys(local).forEach(k=>{
+    const changedHere = !(k in base) || JSON.stringify(local[k])!==JSON.stringify(base[k]);
+    if(!changedHere) return;
+    if(depth>1 && isObj(local[k]) && isObj(out[k])) out[k]=mergeMapKeys(out[k], isObj(base[k])?base[k]:{}, local[k], depth-1);
+    else out[k]=local[k];
+  });
+  return out;
+}
+function mergeSchool(remote, local){
+  const m=Object.assign({}, local);
+  if(remote.offeredClasses) m.offeredClasses=remote.offeredClasses;
+  if(remote.subscription){
+    const rs=remote.subscription, ls=local.subscription||{};
+    const pays=(rs.payments||[]).slice(); const have=new Set(pays.map(p=>p.id));
+    (ls.payments||[]).forEach(p=>{ if(!have.has(p.id)) pays.push(p); });
+    m.subscription=Object.assign({}, rs, {payments:pays});
+  }
+  return m;
+}
+async function mergeForWrite(k, base, local){
+  const remote = await readKey(currentInstId, k);
+  if(remote===undefined || remote===null) return local;
+  if(k==='school' && isObj(remote) && isObj(local)) return mergeSchool(remote, local);
+  const b = base===null||base===undefined ? (Array.isArray(local)?[]:{}) : base;
+  if(isIdArray(local) && isIdArray(remote) && isIdArray(b)) return mergeById(remote, b, local);
+  if(MAP_DEPTH[k] && isObj(local) && isObj(remote)) return mergeMapKeys(remote, isObj(b)?b:{}, local, MAP_DEPTH[k]);
+  return local;
+}
+
+// ---- Picha: kila picha kwenye kipande chake (haiongezi ukubwa wa wanafunzi/wafanyakazi) ----
+const PHOTO_CACHE={};
+const PH_BLANK='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+async function savePhoto(key,dataUrl){ await window.storage.set(ikey('ph_'+key), dataUrl, true); PHOTO_CACHE[key]=dataUrl; }
+async function loadPhoto(key){
+  if(PHOTO_CACHE[key]) return PHOTO_CACHE[key];
+  try{ const r=await window.storage.get(ikey('ph_'+key), true); if(r&&r.value){ PHOTO_CACHE[key]=r.value; return r.value; } }catch(e){}
+  return null;
+}
+async function delPhoto(key){ delete PHOTO_CACHE[key]; try{ await window.storage.delete(ikey('ph_'+key), true); }catch(e){} }
+function photoTag(rec,prefix,size,radius,extra){
+  if(!rec||!rec.picha) return '';
+  const st=`width:${size}px;height:${size}px;object-fit:cover;border-radius:${radius}px;${extra||''}`;
+  if(typeof rec.picha==='string' && rec.picha.startsWith('data:')) return `<img src="${rec.picha}" style="${st}">`;
+  const key=prefix+rec.id;
+  return `<img data-ph="${key}" src="${PHOTO_CACHE[key]||PH_BLANK}" style="${st}">`;
+}
+async function hydratePhotos(root){
+  const imgs=(root||document).querySelectorAll('img[data-ph]');
+  for(const im of imgs){ const v=await loadPhoto(im.dataset.ph); if(v) im.src=v; }
+}
+function renderPhotoPreview(elId,rec,prefix){
+  const el=document.getElementById(elId);
+  if(!rec||!rec.picha){ el.innerHTML='<span class="small">Hakuna picha bado.</span>'; return; }
+  el.innerHTML=photoTag(rec,prefix,70,8,'border:1px solid var(--border)'); hydratePhotos(el);
+}
+async function migratePhotos(){
+  if(!currentInstId||!DB) return;
+  let changed=false;
+  for(const s of DB.students){ if(typeof s.picha==='string' && s.picha.startsWith('data:')){ await savePhoto('s_'+s.id,s.picha); s.picha='1'; changed=true; } }
+  for(const s of DB.staff){ if(typeof s.picha==='string' && s.picha.startsWith('data:')){ await savePhoto('f_'+s.id,s.picha); s.picha='1'; changed=true; } }
+  if(changed) await persist();
+}
+
+// ---- Ukaguzi wa data (dashibodi) ----
+function normName(n){ return String(n||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+function dupGroups(){
+  const g={}; DB.students.forEach(s=>{ const k=normName(s.jina)+'|'+normClass(s.darasa||''); (g[k]=g[k]||[]).push(s); });
+  return Object.values(g).filter(a=>a.length>1);
+}
+function studentWeight(s){
+  const f=DB.fees[s.id]; const pays=f&&f.malipo?f.malipo.length:0; let marks=0;
+  Object.values(DB.marks||{}).forEach(m=>{ if(m && m[s.id]) marks++; });
+  return {pays,marks};
+}
+function filledCount(s){ return [s.regNo,s.jinsia,s.dob,s.join,s.makazi,s.afya,s.mzazi&&s.mzazi.jina,s.mzazi&&s.mzazi.simu,s.picha,(s.masomo||[]).length?1:0].filter(Boolean).length; }
+function dataHealth(){
+  const all=DB.students, ids=new Set(all.map(s=>s.id));
+  const noClass=all.filter(s=>!(s.darasa||'').trim());
+  const hidden=all.filter(s=>(s.darasa||'').trim() && !instClassAllowed(s.darasa));
+  const dups=dupGroups(); const dupExtra=dups.reduce((a,g)=>a+g.length-1,0);
+  const orphanFees=Object.keys(DB.fees).filter(id=>!ids.has(id));
+  let orphanMarks=0; Object.values(DB.marks||{}).forEach(m=>Object.keys(m||{}).forEach(id=>{ if(!ids.has(id)) orphanMarks++; }));
+  return {total:all.length, active:activeStudents().length, noClass, hidden, dups, dupExtra, orphanFees, orphanMarks};
+}
+function renderDataHealth(){
+  const card=document.getElementById('dataHealthCard'); if(!card) return;
+  if(!isAdminUser()){ card.style.display='none'; return; }
+  const h=dataHealth();
+  if(!(h.noClass.length||h.hidden.length||h.dupExtra||h.orphanFees.length||h.orphanMarks)){ card.style.display='none'; return; }
+  card.style.display='block';
+  card.innerHTML=`<h3>🔎 Ukaguzi wa Data</h3>
+    <p class="small">Zilizohifadhiwa: <b>${h.total}</b> · Zinazoonekana kwenye mfumo: <b>${h.active}</b>. Mfumo umegundua yafuatayo:</p>
+    <ul class="small" style="line-height:2">
+      ${h.noClass.length?`<li><b>${h.noClass.length}</b> hawana darasa — <a href="#" onclick="openStudentList('noClass');return false;">Tazama/Rekebisha</a></li>`:''}
+      ${h.hidden.length?`<li><b>${h.hidden.length}</b> wako kwenye madarasa yasiyoruhusiwa na Msimamizi wa Huduma (hawahesabiwi) — <a href="#" onclick="openStudentList('hidden');return false;">Tazama</a></li>`:''}
+      ${h.dupExtra?`<li><b>${h.dupExtra}</b> ni marudio ya majina (jina na darasa vilevile) — <button class="btn sm" onclick="removeDuplicateStudents()">Ondoa Marudio (salama)</button></li>`:''}
+      ${(h.orphanFees.length||h.orphanMarks)?`<li>Rekodi zisizo na mwanafunzi: ada ${h.orphanFees.length}, alama ${h.orphanMarks} — <button class="btn sm" onclick="cleanOrphanRecords()">Safisha</button></li>`:''}
+    </ul>`;
+}
+async function removeDuplicateStudents(){
+  const groups=dupGroups(); if(!groups.length){ alert('Hakuna marudio.'); return; }
+  const del=[]; let review=0;
+  groups.forEach(g=>{
+    const sc=g.map(s=>{ const w=studentWeight(s); return {s,score:w.pays*100+w.marks*10+filledCount(s),pays:w.pays,marks:w.marks}; }).sort((a,b)=>b.score-a.score);
+    sc.slice(1).forEach(x=>{ if(x.pays||x.marks) review++; else del.push(x.s.id); });
+  });
+  if(!del.length){ alert(`Marudio yaliyopo (${review}) yana malipo au alama, kwa hiyo hayajaondolewa kiotomatiki — yakague mwenyewe.`); return; }
+  if(!confirm(`Ondoa rekodi ${del.length} za marudio (zisizo na malipo wala alama)?${review?` Marudio ${review} yenye malipo/alama hayataguswa.`:''}`)) return;
+  const set=new Set(del);
+  DB.students=DB.students.filter(s=>!set.has(s.id));
+  del.forEach(id=>{ delete DB.fees[id]; delPhoto('s_'+id); });
+  await persist(); await logAction('futa','Wanafunzi','Ameondoa marudio '+del.length);
+  renderDash(); alert('Marudio '+del.length+' yameondolewa.'+(review?` (${review} hayakuguswa kwa sababu yana malipo/alama.)`:''));
+}
+async function cleanOrphanRecords(){
+  const h=dataHealth(); if(!h.orphanFees.length && !h.orphanMarks){ alert('Hakuna cha kusafisha.'); return; }
+  if(!confirm(`Futa rekodi za ada ${h.orphanFees.length} na alama ${h.orphanMarks} zisizo na mwanafunzi?`)) return;
+  const ids=new Set(DB.students.map(s=>s.id));
+  h.orphanFees.forEach(id=>{ delete DB.fees[id]; });
+  Object.values(DB.marks).forEach(m=>Object.keys(m).forEach(id=>{ if(!ids.has(id)) delete m[id]; }));
+  await persist(); renderDash(); alert('Imesafishwa.');
+}
+function openStudentList(kind){
+  const h=dataHealth(); const list=kind==='noClass'?h.noClass:h.hidden;
+  const delOk=canDeleteData();
+  openGM(kind==='noClass'?'Wanafunzi Wasio na Darasa':'Wanafunzi wa Madarasa Yasiyoruhusiwa',
+    list.length?`<div class="table-scroll"><table><thead><tr><th>Jina</th><th>Darasa</th><th></th></tr></thead><tbody>${list.map(s=>`<tr><td>${esc(s.jina)}<div class="small">${esc(s.regNo||'')}</div></td><td>${esc(s.darasa||'—')}</td><td class="row-actions"><button class="btn sm ghost" onclick="closeModal('genericModal');openStudentModal('${s.id}')">Hariri</button>${delOk?`<button class="btn sm danger" onclick="spDelete('${s.id}','${kind}')">Futa</button>`:''}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">Hakuna.</p>');
+}
+async function spDelete(id,kind){ await deleteStudent(id); renderDash(); openStudentList(kind); }
+
+// ---- Taarifa za kiafya (siri): zinafunguliwa kwa kitufe tu ----
+function openHealthInfo(){
+  openGM('🩺 Taarifa za Kiafya / Changamoto Maalum (Siri)',
+    `<p class="small">⚠️ Taarifa hizi ni za siri. Usizionyeshe hadharani wala kwa wanafunzi wengine.</p>
+     <input class="searchbar" placeholder="Tafuta mwanafunzi..." oninput="renderHealthList(this.value)">
+     <div id="healthModalList"></div>`);
+  renderHealthList('');
+}
+function renderHealthList(f){
+  const list=activeStudents().filter(s=>s.afya&&s.afya.trim()&&(!f||s.jina.toLowerCase().includes(f.toLowerCase())));
+  document.getElementById('healthModalList').innerHTML = list.length ? list.map(s=>`<div style="padding:8px 0;border-bottom:1px solid var(--border)"><b>${esc(s.jina)}</b> <span class="small">(${esc(s.darasa||s.ngazi||'')})</span><div>${esc(s.afya)}</div></div>`).join('') : '<p class="empty">Hakuna taarifa.</p>';
+}
+
+// ================= ADMIN MKUU: kufuta taarifa ambazo admin mdogo hawezi =================
+const SA_CATS=[
+  {id:'audit',label:'Kumbukumbu (Audit Log)',locked:true,keys:{audit:[]},count:d=>(d.audit||[]).length},
+  {id:'certificates',label:'Vyeti Vilivyotolewa',locked:true,keys:{certificates:[]},count:d=>(d.certificates||[]).length},
+  {id:'payments',label:'Historia ya Malipo ya Ada (risiti zote)',locked:true,special:'payments',count:d=>Object.values(d.fees||{}).reduce((a,f)=>a+((f&&f.malipo)||[]).length,0)},
+  {id:'applications',label:'Maombi ya Kujiunga',locked:true,keys:{applications:[]},count:d=>(d.applications||[]).length},
+  {id:'parentReports',label:'Ripoti za Wazazi',locked:true,keys:{parentReports:[]},count:d=>(d.parentReports||[]).length},
+  {id:'reports_inbox',label:'Ripoti kwa Msimamizi (kikapu)',keys:{reports_inbox:[]},count:d=>(d.reports_inbox||[]).length},
+  {id:'discipline',label:'Rekodi za Nidhamu',keys:{discipline:[]},count:d=>(d.discipline||[]).length},
+  {id:'attendance',label:'Mahudhurio',keys:{attendance:{}},count:d=>Object.keys(d.attendance||{}).length},
+  {id:'exams',label:'Mitihani na Alama zote',keys:{exams:[],marks:{}},count:d=>(d.exams||[]).length},
+  {id:'finance',label:'Mapato/Matumizi ya Uendeshaji',keys:{finance:[]},count:d=>(d.finance||[]).length},
+  {id:'payroll',label:'Mishahara (historia)',keys:{payroll:[]},count:d=>(d.payroll||[]).length},
+  {id:'announcements',label:'Matangazo',keys:{announcements:[]},count:d=>(d.announcements||[]).length},
+  {id:'library',label:'Maktaba (vitabu na mikopo)',keys:{library:{books:[],loans:[]}},count:d=>((d.library||{}).books||[]).length},
+  {id:'students',label:'Wanafunzi WOTE (pamoja na ada, alama, mahudhurio na ripoti zao)',keys:{students:[],fees:{},marks:{},attendance:{},parentReports:[],classReps:{}},count:d=>(d.students||[]).length},
+  {id:'staff',label:'Wafanyakazi WOTE (pamoja na mishahara na likizo)',keys:{staff:[],payroll:[],leave:[]},count:d=>(d.staff||[]).length}
+];
+const SA_READ_KEYS=['audit','certificates','fees','applications','parentReports','reports_inbox','discipline','attendance','exams','finance','payroll','announcements','library','students','staff'];
+async function saWriteKey(instId,k,v){ await window.storage.set('inst_'+instId+':'+k, JSON.stringify(v), true); }
+async function saAuditMarker(instId,text,replace){
+  const marker={id:uid(),ts:new Date().toISOString(),userId:'platform',userName:'Msimamizi wa Huduma',role:'Admin Mkuu wa Mfumo',action:'futa',modul:'Kumbukumbu',detail:text};
+  const cur=replace?[]:((await readKey(instId,'audit'))||[]);
+  await saWriteKey(instId,'audit',cur.concat([marker]));
+}
+async function saDeletePhotos(instId,prefix){
+  try{ const r=await window.storage.list('inst_'+instId+':ph_'+prefix, true); for(const k of ((r&&r.keys)||[])) await window.storage.delete(k,true); }catch(e){}
+}
+async function saOpenData(instId){
+  const school=(await readKey(instId,'school'))||{};
+  const vals=await Promise.all(SA_READ_KEYS.map(k=>readKey(instId,k))); const d={}; SA_READ_KEYS.forEach((k,i)=>d[k]=vals[i]);
+  openGM('🗑️ Futa Taarifa — '+(school.jina||instId),
+    `<p class="small">Hizi ni taarifa ambazo <b>admin mdogo (mwenye taasisi)</b> hawezi kuzifuta (zilizowekwa alama 🔒) na nyingine. Kila ufutaji unahitaji uthibitisho na <b>hauwezi kurudishwa</b>.</p>
+     <div class="table-scroll"><table><thead><tr><th>Taarifa</th><th>Idadi</th><th></th></tr></thead><tbody>${SA_CATS.map(c=>`<tr><td>${esc(c.label)}${c.locked?' <span class="pill bad">🔒 Admin mdogo hawezi</span>':''}</td><td>${c.count(d)}</td><td><button class="btn sm danger" onclick="saAskWipe('${instId}','${c.id}')">🗑️ Futa Zote</button></td></tr>`).join('')}</tbody></table></div>
+     <div class="note-box" style="border-color:var(--bad);margin-top:12px"><b>⚠️ Eneo la Hatari</b><br><span class="small">Kufuta taasisi nzima (taarifa zote, watumiaji wote, na kuiondoa kwenye orodha ya taasisi).</span><br><button class="btn danger" style="margin-top:8px" onclick="saAskDeleteInst('${instId}')">❌ Futa Taasisi Nzima</button></div>`);
+}
+function saAskWipe(instId,catId){
+  const c=SA_CATS.find(x=>x.id===catId);
+  openGM('Thibitisha Kufuta',
+    `<p>Unakaribia kufuta: <b>${esc(c.label)}</b>. Haiwezi kurudishwa.</p><div class="field"><label>Andika <b>FUTA</b> kuthibitisha</label><input id="saConfirmTxt" autocomplete="off"></div>
+     <div class="row-actions"><button class="btn danger" onclick="saDoWipe('${instId}','${catId}')">Thibitisha Kufuta</button><button class="btn ghost" onclick="saOpenData('${instId}')">Ghairi</button></div>`);
+}
+async function saDoWipe(instId,catId){
+  if((document.getElementById('saConfirmTxt').value||'').trim()!=='FUTA'){ alert('Andika neno FUTA kuthibitisha.'); return; }
+  const c=SA_CATS.find(x=>x.id===catId);
+  if(c.special==='payments'){ const fees=(await readKey(instId,'fees'))||{}; Object.values(fees).forEach(f=>{ if(f) f.malipo=[]; }); await saWriteKey(instId,'fees',fees); }
+  else { for(const [k,v] of Object.entries(c.keys)) await saWriteKey(instId,k,v); }
+  if(catId==='students') await saDeletePhotos(instId,'s_');
+  if(catId==='staff') await saDeletePhotos(instId,'f_');
+  await saAuditMarker(instId, catId==='audit'?'Kumbukumbu zote zilifutwa na Msimamizi wa Huduma':'Msimamizi wa Huduma alifuta: '+c.label, catId==='audit');
+  alert('Imefutwa: '+c.label); await saOpenData(instId);
+}
+function saAskDeleteInst(instId){
+  openGM('❌ Futa Taasisi Nzima',
+    `<p>Taarifa ZOTE za taasisi hii zitafutwa kabisa, na watumiaji wake hawataweza kuingia tena. <b>Haiwezi kurudishwa.</b></p><div class="field"><label>Andika <b>FUTA TAASISI</b> kuthibitisha</label><input id="saConfirmTxt" autocomplete="off"></div>
+     <div class="row-actions"><button class="btn danger" onclick="saDoDeleteInst('${instId}')">Thibitisha Kufuta Taasisi</button><button class="btn ghost" onclick="saOpenData('${instId}')">Ghairi</button></div>`);
+}
+async function saDoDeleteInst(instId){
+  if((document.getElementById('saConfirmTxt').value||'').trim()!=='FUTA TAASISI'){ alert('Andika FUTA TAASISI kuthibitisha.'); return; }
+  for(const k of DB_KEYS){ try{ await window.storage.delete('inst_'+instId+':'+k, true); }catch(e){} }
+  try{ await window.storage.delete('inst_'+instId, true); }catch(e){}
+  await saDeletePhotos(instId,'');
+  const idx=(await getGlobalIndex()).filter(e=>e.instId!==instId); await saveGlobalIndex(idx);
+  closeModal('genericModal'); alert('Taasisi imefutwa kabisa.'); await renderSuperAdmin();
 }
 
 loadAll();
