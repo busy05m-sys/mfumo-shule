@@ -1432,6 +1432,30 @@ function switchAuthTab(tab, btn){
 function setupLoginScreen(){
   switchAuthTab('login', document.querySelector('.authtab[data-tab="login"]'));
 }
+/* ================= NYWILA SALAMA (v2) =================
+   Nywila hazihifadhiwi tena kama maandishi ya wazi. Zinahifadhiwa kama PBKDF2-SHA256 (WebCrypto)
+   na "salt" ya kila mtumiaji kwenye field `pass_h`. Akaunti za zamani (zenye `pass` ya wazi) bado
+   zinaingia, kisha zinabadilishwa kiotomatiki kuwa `pass_h` mtumiaji anapoingia kwa mafanikio. */
+const PW_ITER = 150000;
+const PW_OK = !!(window.crypto && window.crypto.subtle);
+function pwB64(u8){ let s=''; u8.forEach(b=>{ s+=String.fromCharCode(b); }); return btoa(s); }
+function pwFromB64(b){ return Uint8Array.from(atob(b), c=>c.charCodeAt(0)); }
+async function pwHash(pass, saltB64, iter){
+  iter = iter || PW_ITER;
+  const salt = saltB64 ? pwFromB64(saltB64) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({name:'PBKDF2', salt, iterations:iter, hash:'SHA-256'}, key, 256);
+  return 'pbkdf2$'+iter+'$'+pwB64(salt)+'$'+pwB64(new Uint8Array(bits));
+}
+async function pwVerify(u, input){
+  if(u && u.pass_h){
+    if(!PW_OK) return false;
+    try{ const p=u.pass_h.split('$'); return (await pwHash(input, p[2], parseInt(p[1],10)))===u.pass_h; }catch(e){ return false; }
+  }
+  return !!u && typeof u.pass==='string' && u.pass===input;
+}
+async function pwFields(pass){ return PW_OK ? {pass_h: await pwHash(pass)} : {pass}; }
+
 async function registerInstitution(){
   const instName = document.getElementById('regInstName').value.trim();
   const jina = document.getElementById('regJina').value.trim();
@@ -1444,7 +1468,7 @@ async function registerInstitution(){
   DB = blankDB();
   DB.school.jina = instName;
   DB.school.subscription = {status:'trial', trialStart:new Date().toISOString(), activatedUntil:null, payments:[]};
-  DB.users.push({id:uid(), jina, email, pass, role:"Msimamizi Mkuu", subject:"", positions:[], darasa:"", permissions: defaultPermsForRole("Msimamizi Mkuu")});
+  DB.users.push({id:uid(), jina, email, ...(await pwFields(pass)), role:"Msimamizi Mkuu", subject:"", positions:[], darasa:"", permissions: defaultPermsForRole("Msimamizi Mkuu")});
   currentInstId = instId;
   currentUser = DB.users[0];
   idx.push({email, instId, instName});
@@ -1464,7 +1488,9 @@ async function logFailedLogin(instId, email){
   try{
     const cur = (await readKey(instId,'audit'))||[];
     cur.push({id:uid(), ts:new Date().toISOString(), userId:'', userName:email, role:'', action:'login_imeshindwa', modul:'Mfumo', detail:'Jaribio lisilofanikiwa la kuingia · '+deviceInfo()});
-    await window.storage.set('inst_'+instId+':audit', JSON.stringify(cur.slice(-10000)), true);
+    let merged = cur.slice(-10000); let str = JSON.stringify(merged);
+    while(str.length>900000 && merged.length>50){ merged = merged.slice(Math.ceil(merged.length*0.1)); str = JSON.stringify(merged); }
+    await window.storage.set('inst_'+instId+':audit', str, true);
   }catch(e){}
 }
 async function doLogin(){
@@ -1477,7 +1503,8 @@ async function doLogin(){
   let usersList = await readKey(entry.instId,'users');
   if(usersList===undefined){ const lg = await readLegacy(entry.instId); usersList = lg?lg.users:undefined; }
   if(!usersList){ document.getElementById('loginError').textContent = 'Taarifa za taasisi hazikupatikana. Jaribu tena.'; return; }
-  const found = usersList.find(x=>x.email.toLowerCase()===email && x.pass===pass);
+  let found = null;
+  for(const x of usersList){ if(x.email.toLowerCase()===email && await pwVerify(x,pass)){ found = x; break; } }
   if(!found){ await logFailedLogin(entry.instId,email); document.getElementById('loginError').textContent = 'Barua pepe au nenosiri si sahihi.'; return; }
   const inst = await loadInstitution(entry.instId);
   if(!inst){ document.getElementById('loginError').textContent = 'Taarifa za taasisi hazikupatikana. Jaribu tena.'; return; }
@@ -1490,6 +1517,13 @@ async function doLogin(){
     try{ await window.storage.delete('inst_'+currentInstId, true); }catch(e){}
   }
   takeSnap();
+  // Uhamishaji wa kimya: nywila ya zamani ya wazi inabadilishwa kuwa hash baada ya kuingia kwa mafanikio
+  if(PW_OK && found.pass && !found.pass_h){
+    try{
+      const cu = DB.users.find(x=>x.id===found.id);
+      if(cu){ cu.pass_h = await pwHash(pass); delete cu.pass; await persist(); }
+    }catch(e){ console.error('Uhamishaji wa nywila umeshindikana', e); }
+  }
   await logAction('login','Mfumo','Ameingia · '+deviceInfo());
   enterApp();
 }
@@ -1571,7 +1605,8 @@ function openUserModal(id){
   const u = id ? DB.users.find(x=>x.id===id) : null;
   document.getElementById('usJina').value = u?.jina||'';
   document.getElementById('usEmail').value = u?.email||'';
-  document.getElementById('usPass').value = u?.pass||'';
+  document.getElementById('usPass').value = '';
+  document.getElementById('usPass').placeholder = id ? 'Acha tupu ili kutobadilisha nenosiri' : 'Weka nenosiri';
   document.getElementById('usRole').innerHTML = ROLES.map(r=>`<option ${u?.role===r?'selected':''}>${r}</option>`).join('');
   document.getElementById('usRole').onchange = ()=>{ document.getElementById('usSubjectField').style.display = document.getElementById('usRole').value==='Mwalimu'?'block':'none'; };
   document.getElementById('usSubjectField').style.display = (u?.role||document.getElementById('usRole').value)==='Mwalimu'?'block':'none';
@@ -1593,14 +1628,15 @@ async function saveUser(){
   const canEdit = document.getElementById('usCanEdit').checked;
   const canDelete = document.getElementById('usCanDelete').checked;
   const allowedLevels = Array.from(document.querySelectorAll('.lvlChk:checked')).map(c=>c.value);
-  if(!jina||!email||!pass){ alert('Jaza sehemu zote.'); return; }
+  if(!jina||!email||(!id && !pass)){ alert('Jaza sehemu zote.'); return; }
   const idx = await getGlobalIndex();
   if(id){
     const existing = idx.find(x=>x.email.toLowerCase()===email);
     if(existing && existing.instId!==currentInstId){ alert('Barua pepe hii tayari inatumika na taasisi nyingine.'); return; }
     const u = DB.users.find(x=>x.id===id);
     const oldEmail = u.email;
-    Object.assign(u, {jina, email, pass, role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", permissions, canEdit, canDelete, allowedLevels});
+    if(pass){ delete u.pass; delete u.pass_h; Object.assign(u, await pwFields(pass)); }
+    Object.assign(u, {jina, email, role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", permissions, canEdit, canDelete, allowedLevels});
     if(oldEmail.toLowerCase()!==email){
       const gi = idx.find(x=>x.email.toLowerCase()===oldEmail.toLowerCase());
       if(gi) gi.email = email;
@@ -1608,7 +1644,7 @@ async function saveUser(){
     }
   } else {
     if(idx.some(x=>x.email.toLowerCase()===email)){ alert('Barua pepe hii tayari imesajiliwa mahali pengine.'); return; }
-    DB.users.push({id:uid(), jina, email, pass, role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", positions:[], darasa:'', permissions, canEdit, canDelete, allowedLevels});
+    DB.users.push({id:uid(), jina, email, ...(await pwFields(pass)), role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", positions:[], darasa:'', permissions, canEdit, canDelete, allowedLevels});
     idx.push({email, instId:currentInstId, instName: DB.school.jina||''});
     await saveGlobalIndex(idx);
   }
@@ -4573,9 +4609,12 @@ async function submitPlatformPayment(){
 // ================= ADMIN WA MFUMO (SUPER ADMIN — TAASISI ZOTE) =================
 const PLATFORM_ADMIN_KEY = 'platform_admin_auth';
 async function getPlatformAdminPass(){
-  try{ const r = await window.storage.get(PLATFORM_ADMIN_KEY, true); return r && r.value ? JSON.parse(r.value).pass : null; }catch(e){ return null; }
+  try{ const r = await window.storage.get(PLATFORM_ADMIN_KEY, true); if(!(r && r.value)) return null; const o=JSON.parse(r.value); return o.pass_h || o.pass || null; }catch(e){ return null; }
 }
-async function setPlatformAdminPass(pass){ await window.storage.set(PLATFORM_ADMIN_KEY, JSON.stringify({pass}), true); }
+async function getPlatformAdminRec(){
+  try{ const r = await window.storage.get(PLATFORM_ADMIN_KEY, true); return r && r.value ? JSON.parse(r.value) : null; }catch(e){ return null; }
+}
+async function setPlatformAdminPass(pass){ await window.storage.set(PLATFORM_ADMIN_KEY, JSON.stringify(await pwFields(pass)), true); }
 async function openSuperAdmin(){
   $('loginScreen').style.display='none'; $('superAdminScreen').style.display='flex';
   $('saGate').style.display='block'; $('saPanel').style.display='none'; $('saPass').value=''; $('saGateErr').textContent='';
@@ -4588,7 +4627,11 @@ async function saLogin(){
   if(!existing){
     if(!p || p.length<4){ $('saGateErr').textContent='Weka nenosiri lenye herufi/namba 4 au zaidi.'; return; }
     await setPlatformAdminPass(p);
-  } else if(p!==existing){ $('saGateErr').textContent='Nenosiri si sahihi.'; return; }
+  } else {
+    const rec = await getPlatformAdminRec();
+    if(!(await pwVerify(rec,p))){ $('saGateErr').textContent='Nenosiri si sahihi.'; return; }
+    if(rec && rec.pass && !rec.pass_h && PW_OK){ try{ await setPlatformAdminPass(p); }catch(e){} }
+  }
   $('saGate').style.display='none'; $('saPanel').style.display='block';
   await renderSuperAdmin();
 }
