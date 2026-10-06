@@ -238,12 +238,12 @@ body.printing .no-print{display:none !important}
      ============================================================ -->
 <script>
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyClHMIDJnOKDIyQ0iuuSlW4dcIJBUvYo3k",
-  authDomain: "mfumo-shule-kiseja.firebaseapp.com",
-  projectId: "mfumo-shule-kiseja",
-  storageBucket: "mfumo-shule-kiseja.firebasestorage.app",
-  messagingSenderId: "875683821044",
-  appId: "1:875683821044:web:a9f98c52d6fb3155beb5a1"
+  apiKey: "AIzaSyBs0Loecah3Em7s94mwbJRS2CpiKdkpg-4",
+  authDomain: "elimu-kiseja-v2.firebaseapp.com",
+  projectId: "elimu-kiseja-v2",
+  storageBucket: "elimu-kiseja-v2.firebasestorage.app",
+  messagingSenderId: "39366689398",
+  appId: "1:39366689398:web:a8897ab3cebb61bc769557"
 };
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -279,8 +279,10 @@ Minimum version required to store current data is: `+i+`.
   } else {
     firebase.initializeApp(window.FIREBASE_CONFIG);
     const fdb = firebase.firestore();
-    const authReady = firebase.auth().signInAnonymously()
-      .catch(e=>{ console.error('Firebase auth error', e); });
+    const fauth = firebase.auth();
+    const authReady = Promise.resolve();
+    // Kikao cha kuingia hakihifadhiwi kwenye kivinjari (kila ukurasa unapofunguliwa unaingia upya, kama awali)
+    window.fb = {auth: fauth, db: fdb, ready: fauth.setPersistence(firebase.auth.Auth.Persistence.NONE).catch(function(){})};
     window.storage = {
       async get(key, shared){
         await authReady;
@@ -329,6 +331,7 @@ Minimum version required to store current data is: `+i+`.
       <div class="field"><label>Barua Pepe</label><input id="lgEmail" placeholder="jina@shule.co.tz"></div>
       <div class="field"><label>Nenosiri</label><input type="password" id="lgPass"></div>
       <button class="btn" style="width:100%" onclick="doLogin()">Ingia</button>
+      <p class="small" style="text-align:center;margin-top:10px"><a href="#" onclick="forgotPassword();return false;">Umesahau nenosiri?</a></p>
     </div>
 
     <div id="registerFormWrap" style="display:none">
@@ -370,7 +373,8 @@ Minimum version required to store current data is: `+i+`.
 <div id="superAdminScreen" style="display:none;position:fixed;inset:0;background:#0d2438;z-index:9500;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto">
   <div style="max-width:900px;width:100%">
     <div id="saGate" class="login-box" style="max-width:400px;margin:40px auto">
-      <h2 id="saGateTitle">Admin wa Mfumo</h2>
+      <h2 id="saGateTitle">Ingia kama Admin Mkuu wa Mfumo</h2>
+      <div class="field"><label>Barua Pepe</label><input id="saEmail" value="info@kiseja.com" readonly></div>
       <div class="field"><label>Nenosiri</label><input type="password" id="saPass"></div>
       <button class="btn accent" style="width:100%" onclick="saLogin()">Ingia</button>
       <p class="small" id="saGateErr" style="color:var(--bad)"></p>
@@ -1103,7 +1107,8 @@ Said Kassim|Mlinzi"></textarea>
         <h3>⬆️ Unganisha Nakala Kutoka Kompyuta Nyingine</h3>
         <p class="small">Chagua faili la JSON lililopakuliwa hapo awali kutoka kompyuta/kifaa kingine. Taarifa mpya zitaunganishwa na zilizopo — <b>hazitafuta wala kubadilisha</b> taarifa zilizopo tayari.</p>
         <input type="file" id="importFile" accept=".json,application/json">
-        <button class="btn accent" style="margin-top:10px" onclick="importBackup()">🗂️ Unganisha Taarifa</button>
+        <label class="chip-check" style="margin-top:10px"><input type="checkbox" id="importReplace"> <b>Rejesha kamili (kwa uhamishaji)</b> — inabadilisha data zote na mipangilio ya shule kwa zile za nakala. Tumia kwenye taasisi MPYA tupu tu.</label>
+        <button class="btn accent" style="margin-top:10px" onclick="importBackup()">🗂️ Unganisha / Rejesha Taarifa</button>
         <p class="small" id="importStatus" style="margin-top:8px;"></p>
       </div>
     </div>
@@ -1198,7 +1203,8 @@ Said Kassim|Mlinzi"></textarea>
     <div class="grid g2">
       <div class="field"><label>Jina Kamili</label><input id="usJina"></div>
       <div class="field"><label>Barua Pepe (Jina la Kuingia)</label><input id="usEmail"></div>
-      <div class="field"><label>Nenosiri</label><input type="password" id="usPass"></div>
+      <div class="field" id="usPassField"><label id="usPassLabel">Nenosiri la Kuanzia (herufi 6 au zaidi)</label><input type="password" id="usPass" autocomplete="new-password"></div>
+      <div class="field" id="usResetField" style="display:none"><label>Nenosiri</label><button class="btn sm ghost" type="button" onclick="sendUserReset()">✉️ Tuma Kiungo cha Kubadili Nenosiri</button><p class="small">Mtumiaji atapokea kiungo kwenye barua pepe yake na kuweka nenosiri jipya mwenyewe.</p></div>
       <div class="field"><label>Wadhifa (Ruhusa ya Mfumo)</label><select id="usRole"></select></div>
       <div class="field" id="usSubjectField" style="display:none"><label>Somo Analoifundisha</label><input id="usSubject"></div>
     </div>
@@ -1291,13 +1297,6 @@ let currentUser = null;
 let currentInstId = null;
 
 // ---------- MULTI-TENANT (TAASISI) STORAGE ----------
-async function getGlobalIndex(){
-  try{ const r = await window.storage.get('global_index', true); if(r&&r.value) return JSON.parse(r.value); }catch(e){}
-  return [];
-}
-async function saveGlobalIndex(list){
-  try{ await window.storage.set('global_index', JSON.stringify(list), true); }catch(e){ console.error(e); }
-}
 let SNAP = {};
 function takeSnap(){ SNAP = {}; DB_KEYS.forEach(k=>{ SNAP[k]=JSON.stringify(DB[k]); }); }
 function ikey(k){ return 'inst_'+currentInstId+':'+k; }
@@ -1402,8 +1401,11 @@ async function persist(){
   if(!anyFail) hideStorageError();
   if(entries.length) await appendAudit(entries);
 }
+let lastSyncAt = 0;
 async function syncFromStorage(){
   if(!currentInstId) return;
+  if(Date.now() - lastSyncAt < 20000) return true; // epuka kusoma database nzima kila kubofya menu
+  lastSyncAt = Date.now();
   const vals = await Promise.all(DB_KEYS.map(k=>readKey(currentInstId,k)));
   DB_KEYS.forEach((k,i)=>{
     if(vals[i]===undefined) return;
@@ -1456,27 +1458,100 @@ async function pwVerify(u, input){
 }
 async function pwFields(pass){ return PW_OK ? {pass_h: await pwHash(pass)} : {pass}; }
 
+/* ================= UTAMBULISHO (v4): Firebase Authentication halisi =================
+   Kila mtumiaji ana akaunti ya Firebase (barua pepe + nenosiri). Kila akaunti ina "uanachama"
+   (members/{uid}) unaoonyesha taasisi yake na wadhifa (admin|member). Firestore Rules zinaruhusu
+   kusoma/kuandika data ya taasisi X kwa wanachama wa X pekee. */
+const SUPER_ADMIN_EMAIL = 'info@kiseja.com';
+const ADMIN_APP_ROLES = ['Msimamizi Mkuu','Mkuu wa Shule/Chuo'];
+function memberRoleFor(appRole){ return ADMIN_APP_ROLES.includes(appRole) ? 'admin' : 'member'; }
+function authErrMsg(e){
+  const c = (e && e.code) || '';
+  const m = {
+    'auth/invalid-credential':'Barua pepe au nenosiri si sahihi.',
+    'auth/wrong-password':'Barua pepe au nenosiri si sahihi.',
+    'auth/user-not-found':'Barua pepe au nenosiri si sahihi.',
+    'auth/invalid-email':'Barua pepe si sahihi.',
+    'auth/missing-password':'Andika nenosiri.',
+    'auth/weak-password':'Nenosiri liwe na herufi angalau 6.',
+    'auth/email-already-in-use':'Barua pepe hii tayari ina akaunti (huenda iko kwenye taasisi nyingine).',
+    'auth/too-many-requests':'Majaribio mengi yameshindwa. Subiri kidogo kisha jaribu tena.',
+    'auth/network-request-failed':'Hitilafu ya mtandao. Angalia intaneti yako.',
+    'permission-denied':'Huna ruhusa ya kufanya kitendo hiki.'
+  };
+  return m[c] || ('Hitilafu imetokea: ' + (c || (e && e.message) || ''));
+}
+async function fbSignIn(email, pass){ await fb.ready; return fb.auth.signInWithEmailAndPassword(email, pass); }
+async function getMember(authUid){
+  const sn = await fb.db.collection('members').doc(authUid).get();
+  return sn.exists ? sn.data() : null;
+}
+// Huunda akaunti ya mtumiaji mwingine BILA kumtoa nje msimamizi aliyeingia (kwa kutumia "app" ya pili ya muda)
+async function createAuthUserNoLogin(email, pass){
+  const sec = firebase.initializeApp(window.FIREBASE_CONFIG, 'sec' + Date.now());
+  try{
+    await sec.auth().setPersistence(firebase.auth.Auth.Persistence.NONE).catch(function(){});
+    const c = await sec.auth().createUserWithEmailAndPassword(email, pass);
+    const newUid = c.user.uid;
+    await sec.auth().signOut();
+    return newUid;
+  } finally { try{ await sec.delete(); }catch(e){} }
+}
+async function forgotPassword(){
+  const el = document.getElementById('loginError');
+  const email = (document.getElementById('lgEmail').value||'').trim().toLowerCase();
+  el.style.color = 'var(--bad)';
+  if(!email){ el.textContent = 'Andika barua pepe yako kwanza, kisha bofya "Umesahau nenosiri?".'; return; }
+  try{
+    await fb.ready; await fb.auth.sendPasswordResetEmail(email);
+    el.style.color = 'var(--good)';
+    el.textContent = '✅ Tumekutumia kiungo cha kubadili nenosiri kwenye barua pepe yako (angalia pia Spam).';
+  }catch(e){ el.textContent = authErrMsg(e); }
+}
+async function sendUserReset(){
+  const id = document.getElementById('usId').value;
+  const u = DB.users.find(x=>x.id===id); if(!u) return;
+  try{ await fb.auth.sendPasswordResetEmail(u.email); alert('✅ Kiungo cha kubadili nenosiri kimetumwa kwa '+u.email); }
+  catch(e){ alert(authErrMsg(e)); }
+}
 async function registerInstitution(){
+  const errEl = document.getElementById('loginError'); errEl.style.color = 'var(--bad)';
   const instName = document.getElementById('regInstName').value.trim();
   const jina = document.getElementById('regJina').value.trim();
   const email = document.getElementById('regEmail').value.trim().toLowerCase();
   const pass = document.getElementById('regPass').value;
-  if(!instName||!jina||!email||!pass){ document.getElementById('loginError').textContent = 'Jaza sehemu zote.'; return; }
-  const idx = await getGlobalIndex();
-  if(idx.some(x=>x.email.toLowerCase()===email)){ document.getElementById('loginError').textContent = 'Barua pepe hii tayari inatumika. Tumia "Ingia" badala yake.'; return; }
-  const instId = uid();
-  DB = blankDB();
-  DB.school.jina = instName;
-  DB.school.subscription = {status:'trial', trialStart:new Date().toISOString(), activatedUntil:null, payments:[]};
-  DB.users.push({id:uid(), jina, email, ...(await pwFields(pass)), role:"Msimamizi Mkuu", subject:"", positions:[], darasa:"", permissions: defaultPermsForRole("Msimamizi Mkuu")});
-  currentInstId = instId;
-  currentUser = DB.users[0];
-  idx.push({email, instId, instName});
-  await saveGlobalIndex(idx);
-  await writeAllKeys();
-  takeSnap();
-  await logAction('login','Mfumo','Ameunda taasisi mpya na kuingia · '+deviceInfo());
-  enterApp();
+  if(!instName||!jina||!email||!pass){ errEl.textContent = 'Jaza sehemu zote.'; return; }
+  if(pass.length < 6){ errEl.textContent = 'Nenosiri liwe na herufi angalau 6.'; return; }
+  try{
+    await fb.ready;
+    let authUid;
+    try{
+      const c = await fb.auth.createUserWithEmailAndPassword(email, pass); authUid = c.user.uid;
+    }catch(e){
+      if(e.code !== 'auth/email-already-in-use') throw e;
+      // Labda usajili ulikatika katikati mara ya awali: endelea tu kama nenosiri ni sahihi na hakuna uanachama bado
+      const c = await fb.auth.signInWithEmailAndPassword(email, pass); authUid = c.user.uid;
+      if(await getMember(authUid)){ await fb.auth.signOut(); errEl.textContent = 'Barua pepe hii tayari ina akaunti. Tumia "Ingia" badala yake.'; return; }
+    }
+    const instId = uid();
+    DB = blankDB();
+    DB.school.jina = instName;
+    DB.school.subscription = {status:'trial', trialStart:new Date().toISOString(), activatedUntil:null, payments:[]};
+    DB.users.push({id:uid(), jina, email, authUid, role:"Msimamizi Mkuu", subject:"", positions:[], darasa:"", permissions: defaultPermsForRole("Msimamizi Mkuu")});
+    currentInstId = instId;
+    currentUser = DB.users[0];
+    await fb.db.collection('members').doc(authUid).set({inst:'inst_'+instId, role:'admin'});
+    await writeAllKeys();
+    await fb.db.collection('institutions').doc(instId).set({instName, email, createdAt:new Date().toISOString()});
+    takeSnap();
+    await logAction('login','Mfumo','Ameunda taasisi mpya na kuingia · '+deviceInfo());
+    enterApp();
+  }catch(e){
+    console.error(e);
+    errEl.textContent = authErrMsg(e);
+    try{ await fb.auth.signOut(); }catch(_){}
+    currentInstId = null; currentUser = null; DB = null;
+  }
 }
 function deviceInfo(){
   const ua = navigator.userAgent||'';
@@ -1484,51 +1559,41 @@ function deviceInfo(){
   const os = /Android/.test(ua)?'Android':/iPhone|iPad/.test(ua)?'iOS':/Windows/.test(ua)?'Windows':/Mac/.test(ua)?'Mac':/Linux/.test(ua)?'Linux':'';
   return br+(os?(' / '+os):'')+' · '+screen.width+'x'+screen.height;
 }
-async function logFailedLogin(instId, email){
-  try{
-    const cur = (await readKey(instId,'audit'))||[];
-    cur.push({id:uid(), ts:new Date().toISOString(), userId:'', userName:email, role:'', action:'login_imeshindwa', modul:'Mfumo', detail:'Jaribio lisilofanikiwa la kuingia · '+deviceInfo()});
-    let merged = cur.slice(-10000); let str = JSON.stringify(merged);
-    while(str.length>900000 && merged.length>50){ merged = merged.slice(Math.ceil(merged.length*0.1)); str = JSON.stringify(merged); }
-    await window.storage.set('inst_'+instId+':audit', str, true);
-  }catch(e){}
-}
 async function doLogin(){
+  const errEl = document.getElementById('loginError'); errEl.style.color = 'var(--bad)';
   const email = document.getElementById('lgEmail').value.trim().toLowerCase();
   const pass = document.getElementById('lgPass').value;
-  if(!email||!pass){ document.getElementById('loginError').textContent = 'Jaza barua pepe na nenosiri.'; return; }
-  const idx = await getGlobalIndex();
-  const entry = idx.find(x=>x.email.toLowerCase()===email);
-  if(!entry){ document.getElementById('loginError').textContent = 'Barua pepe hii haijasajiliwa. Kama ni taasisi mpya, tumia "Sajili Taasisi".'; return; }
-  let usersList = await readKey(entry.instId,'users');
-  if(usersList===undefined){ const lg = await readLegacy(entry.instId); usersList = lg?lg.users:undefined; }
-  if(!usersList){ document.getElementById('loginError').textContent = 'Taarifa za taasisi hazikupatikana. Jaribu tena.'; return; }
-  let found = null;
-  for(const x of usersList){ if(x.email.toLowerCase()===email && await pwVerify(x,pass)){ found = x; break; } }
-  if(!found){ await logFailedLogin(entry.instId,email); document.getElementById('loginError').textContent = 'Barua pepe au nenosiri si sahihi.'; return; }
-  const inst = await loadInstitution(entry.instId);
-  if(!inst){ document.getElementById('loginError').textContent = 'Taarifa za taasisi hazikupatikana. Jaribu tena.'; return; }
-  DB = inst;
-  currentInstId = entry.instId;
-  currentUser = DB.users.find(x=>x.id===found.id) || found;
-  if(DB._migrated){
-    delete DB._migrated;
-    await writeAllKeys();
-    try{ await window.storage.delete('inst_'+currentInstId, true); }catch(e){}
+  if(!email||!pass){ errEl.textContent = 'Jaza barua pepe na nenosiri.'; return; }
+  const fail = async (msg)=>{ errEl.textContent = msg; try{ await fb.auth.signOut(); }catch(_){} DB = null; currentInstId = null; currentUser = null; };
+  try{
+    const cred = await fbSignIn(email, pass);
+    const authUid = cred.user.uid;
+    const mem = await getMember(authUid);
+    if(!mem){ await fail('Akaunti hii haina idhini ya kuingia kwenye taasisi yoyote. Kama ni taasisi mpya tumia "Sajili Taasisi"; vinginevyo wasiliana na msimamizi wa shule yako.'); return; }
+    const instId = String(mem.inst||'').replace(/^inst_/,'');
+    const inst = await loadInstitution(instId);
+    if(!inst){ await fail('Taarifa za taasisi hazikupatikana. Jaribu tena.'); return; }
+    DB = inst; currentInstId = instId;
+    if(DB._migrated) delete DB._migrated;
+    const me = DB.users.find(x=>x.authUid===authUid) || DB.users.find(x=>(x.email||'').toLowerCase()===email);
+    if(!me){ await fail('Taarifa zako hazipo kwenye orodha ya watumiaji wa taasisi. Wasiliana na msimamizi.'); return; }
+    currentUser = me;
+    takeSnap();
+    // Kuunganisha rekodi na akaunti, na kuondoa nywila za zamani (za wazi/hash) zilizobaki kwenye data
+    if(me.authUid!==authUid || me.pass || me.pass_h){
+      me.authUid = authUid; delete me.pass; delete me.pass_h;
+      try{ await persist(); }catch(e){ console.error(e); }
+    }
+    await logAction('login','Mfumo','Ameingia · '+deviceInfo());
+    enterApp();
+  }catch(e){
+    console.error(e);
+    await fail(authErrMsg(e));
   }
-  takeSnap();
-  // Uhamishaji wa kimya: nywila ya zamani ya wazi inabadilishwa kuwa hash baada ya kuingia kwa mafanikio
-  if(PW_OK && found.pass && !found.pass_h){
-    try{
-      const cu = DB.users.find(x=>x.id===found.id);
-      if(cu){ cu.pass_h = await pwHash(pass); delete cu.pass; await persist(); }
-    }catch(e){ console.error('Uhamishaji wa nywila umeshindikana', e); }
-  }
-  await logAction('login','Mfumo','Ameingia · '+deviceInfo());
-  enterApp();
 }
 async function doLogout(silent){
   if(!silent && currentUser && currentInstId){ try{ await logAction('logout','Mfumo','Ametoka'); }catch(e){} }
+  try{ await fb.auth.signOut(); }catch(e){}
   currentUser = null; currentInstId = null; DB = null; SNAP = {};
   document.getElementById('app').style.display='none';
   document.body.classList.add('logged-out');
@@ -1606,7 +1671,11 @@ function openUserModal(id){
   document.getElementById('usJina').value = u?.jina||'';
   document.getElementById('usEmail').value = u?.email||'';
   document.getElementById('usPass').value = '';
-  document.getElementById('usPass').placeholder = id ? 'Acha tupu ili kutobadilisha nenosiri' : 'Weka nenosiri';
+  const hasAcct = !!(u && u.authUid);
+  document.getElementById('usEmail').readOnly = !!id;   // barua pepe haibadilishwi baada ya akaunti kuundwa
+  document.getElementById('usPassField').style.display = (!id || !hasAcct) ? 'block' : 'none';
+  document.getElementById('usPassLabel').textContent = id ? 'Mtumiaji huyu hana akaunti ya kuingia — weka nenosiri la kuanzia (herufi 6+) kuiunda' : 'Nenosiri la Kuanzia (herufi 6 au zaidi)';
+  document.getElementById('usResetField').style.display = (id && hasAcct) ? 'block' : 'none';
   document.getElementById('usRole').innerHTML = ROLES.map(r=>`<option ${u?.role===r?'selected':''}>${r}</option>`).join('');
   document.getElementById('usRole').onchange = ()=>{ document.getElementById('usSubjectField').style.display = document.getElementById('usRole').value==='Mwalimu'?'block':'none'; };
   document.getElementById('usSubjectField').style.display = (u?.role||document.getElementById('usRole').value)==='Mwalimu'?'block':'none';
@@ -1628,25 +1697,27 @@ async function saveUser(){
   const canEdit = document.getElementById('usCanEdit').checked;
   const canDelete = document.getElementById('usCanDelete').checked;
   const allowedLevels = Array.from(document.querySelectorAll('.lvlChk:checked')).map(c=>c.value);
-  if(!jina||!email||(!id && !pass)){ alert('Jaza sehemu zote.'); return; }
-  const idx = await getGlobalIndex();
+  const subject = role==='Mwalimu' ? document.getElementById('usSubject').value.trim() : "";
+  if(!jina||!email){ alert('Jaza sehemu zote.'); return; }
   if(id){
-    const existing = idx.find(x=>x.email.toLowerCase()===email);
-    if(existing && existing.instId!==currentInstId){ alert('Barua pepe hii tayari inatumika na taasisi nyingine.'); return; }
-    const u = DB.users.find(x=>x.id===id);
-    const oldEmail = u.email;
-    if(pass){ delete u.pass; delete u.pass_h; Object.assign(u, await pwFields(pass)); }
-    Object.assign(u, {jina, email, role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", permissions, canEdit, canDelete, allowedLevels});
-    if(oldEmail.toLowerCase()!==email){
-      const gi = idx.find(x=>x.email.toLowerCase()===oldEmail.toLowerCase());
-      if(gi) gi.email = email;
-      await saveGlobalIndex(idx);
+    const u = DB.users.find(x=>x.id===id); if(!u) return;
+    if(!u.authUid && pass){
+      if(pass.length<6){ alert('Nenosiri liwe na herufi angalau 6.'); return; }
+      try{ u.authUid = await createAuthUserNoLogin(u.email, pass); }catch(e){ alert(authErrMsg(e)); return; }
+      try{ await fb.db.collection('members').doc(u.authUid).set({inst:'inst_'+currentInstId, role:memberRoleFor(role)}); }
+      catch(e){ delete u.authUid; alert('Akaunti imeundwa lakini kumpa idhini kumeshindikana: '+authErrMsg(e)); return; }
     }
+    Object.assign(u, {jina, role, subject, permissions, canEdit, canDelete, allowedLevels});
+    if(u.authUid){ try{ await fb.db.collection('members').doc(u.authUid).update({role:memberRoleFor(role)}); }catch(e){ console.warn(e); } }
   } else {
-    if(idx.some(x=>x.email.toLowerCase()===email)){ alert('Barua pepe hii tayari imesajiliwa mahali pengine.'); return; }
-    DB.users.push({id:uid(), jina, email, ...(await pwFields(pass)), role, subject: role==='Mwalimu'?document.getElementById('usSubject').value.trim():"", positions:[], darasa:'', permissions, canEdit, canDelete, allowedLevels});
-    idx.push({email, instId:currentInstId, instName: DB.school.jina||''});
-    await saveGlobalIndex(idx);
+    if(!pass){ alert('Weka nenosiri la kuanzia.'); return; }
+    if(pass.length<6){ alert('Nenosiri liwe na herufi angalau 6.'); return; }
+    if(DB.users.some(x=>(x.email||'').toLowerCase()===email)){ alert('Barua pepe hii tayari ipo kwenye orodha ya taasisi hii.'); return; }
+    let newUid;
+    try{ newUid = await createAuthUserNoLogin(email, pass); }catch(e){ alert(authErrMsg(e)); return; }
+    try{ await fb.db.collection('members').doc(newUid).set({inst:'inst_'+currentInstId, role:memberRoleFor(role)}); }
+    catch(e){ alert('Akaunti imeundwa lakini kumpa idhini kumeshindikana: '+authErrMsg(e)); return; }
+    DB.users.push({id:uid(), jina, email, authUid:newUid, role, subject, positions:[], darasa:'', permissions, canEdit, canDelete, allowedLevels});
   }
   await persist();
   closeModal('userModal');
@@ -1661,14 +1732,11 @@ function renderUserTable(filter){
     <td class="row-actions"><button class="btn sm ghost" onclick="openUserModal('${u.id}')">Hariri</button>${u.id===currentUser.id?'<span class="small">(Wewe)</span>':`<button class="btn sm danger" onclick="deleteUser('${u.id}')">Futa</button>`}</td></tr>`).join('') : `<tr><td colspan="6" class="empty">Hakuna watumiaji.</td></tr>`;
 }
 async function deleteUser(id){
-  if(!confirm('Futa mtumiaji huyu?')) return;
+  if(!confirm('Futa mtumiaji huyu? Hataweza tena kuingia kwenye taasisi hii.')) return;
   const u = DB.users.find(x=>x.id===id);
-  DB.users = DB.users.filter(u=>u.id!==id);
+  DB.users = DB.users.filter(x=>x.id!==id);
   await persist();
-  if(u){
-    const idx = await getGlobalIndex();
-    await saveGlobalIndex(idx.filter(x=>x.email.toLowerCase()!==u.email.toLowerCase()));
-  }
+  if(u && u.authUid){ try{ await fb.db.collection('members').doc(u.authUid).delete(); }catch(e){ console.warn(e); } }
   renderUserTable();
 }
 
@@ -2781,7 +2849,57 @@ function deepMergePreserve(target, source){
   }
   return target; // primitive values: keep what we already have, never overwrite
 }
+async function restoreFull(incoming){
+  // Akaunti za sasa (zenye akaunti halisi ya kuingia) zinabaki; watumiaji wa nakala wanaongezwa bila nywila wala authUid
+  const keep = DB.users.slice();
+  const have = new Set(keep.map(u=>(u.email||'').toLowerCase()));
+  let noAcct = 0;
+  const extra = (Array.isArray(incoming.users)?incoming.users:[]).filter(u=>!have.has((u.email||'').toLowerCase()))
+    .map(u=>{ const c = {...u}; delete c.pass; delete c.pass_h; delete c.authUid; noAcct++; return c; });
+  for(const k of DB_KEYS){
+    if(k==='users' || k==='audit') continue;
+    if(incoming[k]!==undefined && incoming[k]!==null) DB[k] = incoming[k];
+  }
+  DB.users = keep.concat(extra);
+  normalizeDB(DB);
+  for(const k of DB_KEYS){
+    if(k==='audit') continue;
+    await window.storage.set(ikey(k), JSON.stringify(DB[k]), true);   // uandishi wa moja kwa moja (bila kuunganisha)
+    SNAP[k] = JSON.stringify(DB[k]);
+  }
+  if(Array.isArray(incoming.audit)){   // historia ya zamani ya kumbukumbu inahifadhiwa (ndani ya ukomo wa ukubwa)
+    let a = incoming.audit.slice(-10000), str = JSON.stringify(a);
+    while(str.length>850000 && a.length>50){ a = a.slice(Math.ceil(a.length*0.1)); str = JSON.stringify(a); }
+    await window.storage.set(ikey('audit'), str, true); DB.audit = a;
+  }
+  return {noAcct};
+}
 async function importBackup(){
+  const replaceBox = document.getElementById('importReplace');
+  if(!(replaceBox && replaceBox.checked)) return importBackupMerge();
+  const fileInput = document.getElementById('importFile');
+  const statusEl = document.getElementById('importStatus');
+  const f = fileInput.files[0];
+  if(!f){ statusEl.textContent = 'Chagua faili la JSON kwanza.'; statusEl.style.color='var(--bad)'; return; }
+  try{
+    const parsed = JSON.parse(await f.text());
+    const incoming = parsed.data ? parsed.data : parsed;
+    if(!incoming || typeof incoming!=='object' || !Array.isArray(incoming.students)){ statusEl.textContent='Faili hili si nakala sahihi ya mfumo huu.'; statusEl.style.color='var(--bad)'; return; }
+    if(!confirm('REJESHA KAMILI: hii itabadilisha data ZOTE na mipangilio ya taasisi hii (isipokuwa akaunti yako) kwa zile za nakala.\n\nTumia hii kwenye taasisi MPYA tupu tu. Endelea?')) return;
+    const r = await restoreFull(incoming);
+    await logAction('ingiza','Hifadhi','Amerejesha nakala kamili ya JSON: '+f.name);
+    statusEl.textContent = '✅ Nakala imerejeshwa kikamilifu (' + (parsed.school||f.name) + '): wanafunzi ' + incoming.students.length + '.'
+      + (r.noAcct ? ' Watumiaji '+r.noAcct+' wameingizwa lakini HAWANA akaunti ya kuingia bado (Watumiaji > Hariri > weka nenosiri la kuanzia).' : '')
+      + ' Kumbuka: picha hazimo kwenye nakala — zihamishe kwa chombo cha picha.';
+    statusEl.style.color='var(--good)';
+    renderDash();
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = 'Hitilafu wakati wa kurejesha: ' + (e.message||e);
+    statusEl.style.color='var(--bad)';
+  }
+}
+async function importBackupMerge(){
   const fileInput = document.getElementById('importFile');
   const statusEl = document.getElementById('importStatus');
   const f = fileInput.files[0];
@@ -2790,13 +2908,20 @@ async function importBackup(){
     const text = await f.text();
     const parsed = JSON.parse(text);
     const incoming = parsed.data ? parsed.data : parsed; // support both wrapped and raw DB exports
+    // Watumiaji: usiingize nywila yoyote ya zamani, na usirudie barua pepe zilizopo. Watumiaji wa zamani
+    // hawana akaunti mpya za kuingia — msimamizi atawaundia kwa "Hariri" (weka nenosiri la kuanzia).
+    let importedUsersNoAcct = 0;
+    if(Array.isArray(incoming.users)){
+      const have = new Set((DB.users||[]).map(u=>(u.email||'').toLowerCase()));
+      incoming.users = incoming.users.filter(u=>!have.has((u.email||'').toLowerCase())).map(u=>{ const c = {...u}; delete c.pass; delete c.pass_h; delete c.authUid; importedUsersNoAcct++; return c; });
+    }
     Object.keys(incoming).forEach(k=>{
       if(!(k in DB)){ DB[k] = incoming[k]; return; }
       DB[k] = deepMergePreserve(DB[k], incoming[k]);
     });
     await persist();
     await logAction('ingiza','Hifadhi','Ameunganisha nakala ya JSON: '+f.name);
-    statusEl.textContent = '✅ Taarifa zimeunganishwa kikamilifu bila kufuta zilizopo. Faili chanzo: ' + (parsed.school||f.name);
+    statusEl.textContent = '✅ Taarifa zimeunganishwa kikamilifu bila kufuta zilizopo. Faili chanzo: ' + (parsed.school||f.name) + (importedUsersNoAcct ? ' · Watumiaji '+importedUsersNoAcct+' wameingizwa lakini HAWANA akaunti ya kuingia bado — nenda Watumiaji > Hariri kuwaundia.' : '');
     statusEl.style.color='var(--good)';
     renderDash();
   }catch(e){
@@ -4607,31 +4732,28 @@ async function submitPlatformPayment(){
 }
 
 // ================= ADMIN WA MFUMO (SUPER ADMIN — TAASISI ZOTE) =================
-const PLATFORM_ADMIN_KEY = 'platform_admin_auth';
-async function getPlatformAdminPass(){
-  try{ const r = await window.storage.get(PLATFORM_ADMIN_KEY, true); if(!(r && r.value)) return null; const o=JSON.parse(r.value); return o.pass_h || o.pass || null; }catch(e){ return null; }
-}
-async function getPlatformAdminRec(){
-  try{ const r = await window.storage.get(PLATFORM_ADMIN_KEY, true); return r && r.value ? JSON.parse(r.value) : null; }catch(e){ return null; }
-}
-async function setPlatformAdminPass(pass){ await window.storage.set(PLATFORM_ADMIN_KEY, JSON.stringify(await pwFields(pass)), true); }
+// Admin Mkuu anaingia kwa akaunti ya Firebase ya barua pepe SUPER_ADMIN_EMAIL (lazima ithibitishwe).
 async function openSuperAdmin(){
   $('loginScreen').style.display='none'; $('superAdminScreen').style.display='flex';
   $('saGate').style.display='block'; $('saPanel').style.display='none'; $('saPass').value=''; $('saGateErr').textContent='';
-  const existing = await getPlatformAdminPass();
-  $('saGateTitle').textContent = existing ? 'Ingia kama Admin Mkuu wa Mfumo' : 'Weka Nenosiri la Kwanza la Admin Mkuu';
+  $('saGateTitle').textContent = 'Ingia kama Admin Mkuu wa Mfumo';
 }
-function closeSuperAdmin(){ $('superAdminScreen').style.display='none'; $('loginScreen').style.display='flex'; }
+function closeSuperAdmin(){
+  $('superAdminScreen').style.display='none'; $('loginScreen').style.display='flex';
+  try{ fb.auth.signOut(); }catch(e){}
+}
 async function saLogin(){
-  const p = $('saPass').value; const existing = await getPlatformAdminPass();
-  if(!existing){
-    if(!p || p.length<4){ $('saGateErr').textContent='Weka nenosiri lenye herufi/namba 4 au zaidi.'; return; }
-    await setPlatformAdminPass(p);
-  } else {
-    const rec = await getPlatformAdminRec();
-    if(!(await pwVerify(rec,p))){ $('saGateErr').textContent='Nenosiri si sahihi.'; return; }
-    if(rec && rec.pass && !rec.pass_h && PW_OK){ try{ await setPlatformAdminPass(p); }catch(e){} }
-  }
+  const p = $('saPass').value; const err = $('saGateErr'); err.textContent = '';
+  if(!p){ err.textContent = 'Andika nenosiri.'; return; }
+  try{
+    const c = await fbSignIn(SUPER_ADMIN_EMAIL, p);
+    if(!c.user.emailVerified){
+      try{ await c.user.sendEmailVerification(); }catch(e){}
+      await fb.auth.signOut();
+      err.textContent = 'Barua pepe ya Admin Mkuu bado haijathibitishwa. Tumekutumia kiungo cha uthibitisho kwenye '+SUPER_ADMIN_EMAIL+' (angalia pia Spam). Bofya kiungo hicho, kisha ujaribu kuingia tena.';
+      return;
+    }
+  }catch(e){ err.textContent = authErrMsg(e); return; }
   $('saGate').style.display='none'; $('saPanel').style.display='block';
   await renderSuperAdmin();
 }
@@ -4650,9 +4772,8 @@ function subInfo(school){
   return {sub, label, cls};
 }
 async function renderSuperAdmin(){
-  const idx = await getGlobalIndex(); const byInst = {};
-  idx.forEach(e=>{ (byInst[e.instId] = byInst[e.instId] || {instId:e.instId, instName:e.instName, emails:[]}).emails.push(e.email); });
-  const list = Object.values(byInst);
+  const isnap = await fb.db.collection('institutions').get();
+  const list = isnap.docs.map(d=>({instId:d.id, instName:d.data().instName, emails:[d.data().email].filter(Boolean)}));
   const rows = await Promise.all(list.map(async inst=>{
     const school = await readKey(inst.instId,'school') || {};
     const info = subInfo(school);
@@ -5307,7 +5428,8 @@ async function saDoDeleteInst(instId){
   for(const k of DB_KEYS){ try{ await window.storage.delete('inst_'+instId+':'+k, true); }catch(e){} }
   try{ await window.storage.delete('inst_'+instId, true); }catch(e){}
   await saDeletePhotos(instId,'');
-  const idx=(await getGlobalIndex()).filter(e=>e.instId!==instId); await saveGlobalIndex(idx);
+  try{ await fb.db.collection('institutions').doc(instId).delete(); }catch(e){}
+  try{ const ms = await fb.db.collection('members').where('inst','==','inst_'+instId).get(); for(const d of ms.docs){ await d.ref.delete(); } }catch(e){}
   closeModal('genericModal'); alert('Taasisi imefutwa kabisa.'); await renderSuperAdmin();
 }
 
