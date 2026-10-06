@@ -344,6 +344,7 @@ Minimum version required to store current data is: `+i+`.
     </div>
 
     <p class="small" id="loginError" style="color:var(--bad);margin-top:8px;"></p>
+    <p class="small" style="text-align:center;opacity:.55;margin-top:10px">Toleo 4.3</p>
     <div style="text-align:center;margin-top:14px;font-size:11px;color:#9aa">Kwa msaada: info@kiseja.com · 0736631613</div>
     <div style="text-align:center;margin-top:6px;"><a href="#" onclick="openSuperAdmin();return false;" style="font-size:11px;color:#9aa;text-decoration:underline">Admin wa Mfumo (Msimamizi wa Huduma)</a></div>
   </div>
@@ -1188,7 +1189,9 @@ Said Kassim|Mlinzi"></textarea>
     </div>
     <div class="field" id="sfSubjectsField" style="display:none">
       <label>Masomo Anayofundisha (unaweza kuchagua zaidi ya moja — shikilia Ctrl/Cmd kuchagua kadhaa)</label>
-      <select id="sfSubjects" multiple size="8"></select>
+      <input id="sfSubjSearch" placeholder="🔍 Tafuta somo (mf. Business)..." oninput="filterStaffSubjects()" autocomplete="off" style="margin-bottom:6px">
+      <div class="small" id="sfSubjHint" style="margin-bottom:6px"></div>
+      <select id="sfSubjects" multiple size="12"></select>
     </div>
     <button class="btn" onclick="saveStaff()">Hifadhi</button>
   </div>
@@ -1462,6 +1465,7 @@ async function pwFields(pass){ return PW_OK ? {pass_h: await pwHash(pass)} : {pa
    Kila mtumiaji ana akaunti ya Firebase (barua pepe + nenosiri). Kila akaunti ina "uanachama"
    (members/{uid}) unaoonyesha taasisi yake na wadhifa (admin|member). Firestore Rules zinaruhusu
    kusoma/kuandika data ya taasisi X kwa wanachama wa X pekee. */
+const APP_VERSION = '4.3';
 const SUPER_ADMIN_EMAIL = 'info@kiseja.com';
 const ADMIN_APP_ROLES = ['Msimamizi Mkuu','Mkuu wa Shule/Chuo'];
 function memberRoleFor(appRole){ return ADMIN_APP_ROLES.includes(appRole) ? 'admin' : 'member'; }
@@ -1609,7 +1613,7 @@ function enterApp(){
   document.body.classList.remove('logged-out');
   document.getElementById('app').style.display='flex';
   document.getElementById('curUserName').textContent = currentUser.jina;
-  document.getElementById('curUserRole').innerHTML = `<span class="role-tag">${currentUser.role}</span><div style="font-size:11px;opacity:.75;margin-top:2px">${esc(DB.school.jina||'')}</div>`;
+  document.getElementById('curUserRole').innerHTML = `<span class="role-tag">${currentUser.role}</span><div style="font-size:11px;opacity:.75;margin-top:2px">${esc(DB.school.jina||'')}</div><div style="font-size:10px;opacity:.55;margin-top:2px">Toleo ${APP_VERSION}</div>`;
   applyRoleVisibility();
   document.getElementById('repFrom').value = currentUser.email;
   checkSubscriptionGate();
@@ -2282,24 +2286,33 @@ function subjectsSelectHtml(selected){
   const hidden = new Set((DB.hiddenSubjects||[]).map(low));
   const isSel = n=>selected.some(x=>low(x)===low(n));
   const opt = n=>`<option value="${esc(n)}" ${isSel(n)?'selected':''}>${esc(n)}</option>`;
-  const shown = new Set();   // majina yote yaliyokwisha kuonyeshwa (kuzuia kurudia kwenye makundi ya ziada)
+  const shown = new Set();
   let html = '';
-  // Makundi ya kawaida kwa ngazi (kama awali), bila masomo yaliyofutwa kwenye katalogi (isipokuwa yamechaguliwa)
+  // 1) JUU KABISA: masomo ambayo shule yako imeyaongeza mwenyewe
+  const mine = (DB.customSubjects||[]).map(c=>c.jina).filter(n=>n && (!hidden.has(low(n)) || isSel(n)));
+  mine.forEach(n=>shown.add(low(n)));
+  if(mine.length) html += `<optgroup label="⭐ Masomo ya Shule Yako (uliyoyaongeza)">${mine.map(opt).join('')}</optgroup>`;
+  // 2) Makundi ya kawaida kwa ngazi (bila masomo yaliyofutwa, isipokuwa yamechaguliwa)
   Object.entries(SUBJECTS_BY_LEVEL).forEach(([level,subs])=>{
-    const list = subs.filter(n=>!hidden.has(low(n)) || isSel(n));
-    list.forEach(n=>shown.add(low(n)));
+    const list = subs.filter(n=>!shown.has(low(n)) && (!hidden.has(low(n)) || isSel(n)));
     if(list.length) html += `<optgroup label="${esc(level)}">${list.map(opt).join('')}</optgroup>`;
   });
-  // Makundi ya ziada: masomo ya shule yasiyo kwenye orodha ya juu
+  Object.values(SUBJECTS_BY_LEVEL).flat().forEach(n=>shown.add(low(n)));
+  // 3) Chini: masomo mengine ya shule yasiyo kwenye orodha ya juu
   const extra = (label, names)=>{
     const out=[]; names.forEach(n=>{ const k=low(n); if(!k||shown.has(k)) return; if(hidden.has(k) && !isSel(n)) return; shown.add(k); out.push(n); });
     if(out.length) html += `<optgroup label="${esc(label)}">${out.map(opt).join('')}</optgroup>`;
   };
-  extra('Masomo ya Shule Yaliyoongezwa na Wewe', (DB.customSubjects||[]).map(c=>c.jina));
   extra('Masomo Mengine ya Mtaala (kutoka Masomo)', allCatalog().filter(c=>!c.custom).map(c=>c.jina));
   extra('Masomo Yaliyopangwa Madarasani', (DB.subjects||[]).map(x=>x.jina));
   extra('Yaliyochaguliwa Awali (hayapo tena kwenye orodha)', selected);
   return html;
+}
+function filterStaffSubjects(){
+  const q = (document.getElementById('sfSubjSearch').value||'').toLowerCase().trim();
+  const sel = document.getElementById('sfSubjects');
+  sel.querySelectorAll('option').forEach(o=>{ o.style.display = (!q || o.value.toLowerCase().includes(q)) ? '' : 'none'; });
+  sel.querySelectorAll('optgroup').forEach(g=>{ g.style.display = [...g.querySelectorAll('option')].some(o=>o.style.display!=='none') ? '' : 'none'; });
 }
 function onStaffPositionChange(){
   const val = document.getElementById('sfNafasi').value;
@@ -2319,6 +2332,11 @@ function openStaffModal(id){
   document.getElementById('sfMkataba').value = s?.mkataba?.mwisho||'';
   document.getElementById('sfMshahara').value = s?.mkataba?.mshahara||'';
   document.getElementById('sfSubjects').innerHTML = subjectsSelectHtml(s?.masomo);
+  document.getElementById('sfSubjSearch').value = '';
+  const myN = (DB.customSubjects||[]).map(c=>c.jina);
+  document.getElementById('sfSubjHint').innerHTML = myN.length
+    ? '⭐ Masomo uliyoongeza ('+myN.length+') yako <b>juu kabisa</b> ya orodha: '+myN.map(esc).join(', ')
+    : 'Masomo utakayoongeza kwenye ukurasa wa Masomo yataonekana hapa juu kabisa.';
   document.getElementById('sfNoAjira').value = s?.noAjira||'';
   document.getElementById('sfIdType').value = s?.idType||'Kitambulisho cha Taifa (NIDA)';
   document.getElementById('sfIdNo').value = s?.idNo||'';
