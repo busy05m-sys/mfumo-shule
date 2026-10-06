@@ -5311,6 +5311,75 @@ async function saDoDeleteInst(instId){
   closeModal('genericModal'); alert('Taasisi imefutwa kabisa.'); await renderSuperAdmin();
 }
 
+/* ===== v3: Kiashiria cha "Inapakia…" (kisichoharibu chochote — nyongeza ya muonekano tu) ===== */
+(function(){
+  var st = {all:0, fg:0, barT:null, pillT:null, cueT:null, last:0};
+  function ensure(){
+    if(document.getElementById('busyBar')) return;
+    var css = document.createElement('style');
+    css.textContent =
+      '#busyBar{position:fixed;top:0;left:0;right:0;height:4px;z-index:100000;overflow:hidden;display:none;background:rgba(18,51,80,.12);pointer-events:none}'
+     +'#busyBar i{position:absolute;top:0;left:0;width:35%;height:100%;background:var(--accent,#C7912E);animation:busySlide 1.1s ease-in-out infinite;will-change:transform}'
+     +'@keyframes busySlide{0%{transform:translateX(-100%)}100%{transform:translateX(290%)}}'
+     +'#busyPill{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:100000;display:none;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;background:var(--primary,#123350);color:#fff;font:600 13px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.25);pointer-events:none}'
+     +'#busyPill b{width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:busySpin .8s linear infinite}'
+     +'@keyframes busySpin{to{transform:rotate(360deg)}}';
+    document.head.appendChild(css);
+    var bar = document.createElement('div'); bar.id='busyBar'; bar.innerHTML='<i></i>'; document.body.appendChild(bar);
+    var pill = document.createElement('div'); pill.id='busyPill'; pill.innerHTML='<b></b><span>Inapakia…</span>'; document.body.appendChild(pill);
+  }
+  function showBar(){ ensure(); document.getElementById('busyBar').style.display='block'; }
+  function hideBar(){ var b=document.getElementById('busyBar'); if(b) b.style.display='none'; }
+  function showPill(){ ensure(); document.getElementById('busyPill').style.display='flex'; }
+  function hidePill(){ var p=document.getElementById('busyPill'); if(p) p.style.display='none'; }
+  window.busyStart = function(fg){
+    st.all++; if(fg) st.fg++;
+    if(!st.barT){ st.barT = setTimeout(showBar, 100); }
+    if(fg && !st.pillT){ st.pillT = setTimeout(showPill, 500); }
+  };
+  window.busyEnd = function(fg){
+    st.all = Math.max(0, st.all-1); if(fg) st.fg = Math.max(0, st.fg-1);
+    if(st.all===0){ clearTimeout(st.barT); st.barT=null; if(!st.cueT) hideBar(); }
+    if(st.fg===0){ clearTimeout(st.pillT); st.pillT=null; hidePill(); }
+  };
+  // Kila operesheni ya database (kusoma/kuandika/kufuta/orodha) inaonyesha kiashiria ikichukua zaidi ya sekunde 0.1
+  ['get','set','delete','list'].forEach(function(m){
+    var orig = window.storage && window.storage[m]; if(typeof orig!=='function') return;
+    window.storage[m] = function(){
+      var fg = (Date.now() - st.last) < 2500;
+      busyStart(fg);
+      var p; try{ p = Promise.resolve(orig.apply(window.storage, arguments)); }catch(e){ busyEnd(fg); throw e; }
+      return p.then(function(v){ busyEnd(fg); return v; }, function(e){ busyEnd(fg); throw e; });
+    };
+  });
+  // Mwitikio wa papo hapo mtumiaji anapobonyeza kitufe (hata kama kazi ni ya ndani ya kifaa tu)
+  function onPress(e){
+    var t = e.target && e.target.closest ? e.target.closest('button,[onclick],.nav-item,a,.nav a') : null;
+    if(!t || t.disabled) return;
+    st.last = Date.now();
+    showBar(); clearTimeout(st.cueT);
+    st.cueT = setTimeout(function(){ st.cueT=null; if(st.all===0) hideBar(); }, 600);
+  }
+  document.addEventListener('pointerdown', onPress, true);
+  document.addEventListener('keydown', function(e){ if(e.key==='Enter') st.last = Date.now(); }, true);
+})();
+
+// Vitufe vikuu: vinazimwa na kuonyesha "Inapakia…" wakati kazi inaendelea (kuzuia kubonyeza mara mbili)
+function withBtnBusy(selector, text, fn){
+  return async function(){
+    var b = document.querySelector(selector), old = b ? b.innerHTML : '';
+    if(b){ b.disabled = true; b.innerHTML = text; }
+    busyStart(true);
+    try{ return await fn.apply(this, arguments); }
+    finally{ busyEnd(true); if(b){ b.disabled = false; b.innerHTML = old; } }
+  };
+}
+doLogin = withBtnBusy('button[onclick="doLogin()"]', '⏳ Inapakia…', doLogin);
+registerInstitution = withBtnBusy('button[onclick="registerInstitution()"]', '⏳ Inasajili…', registerInstitution);
+saLogin = withBtnBusy('button[onclick="saLogin()"]', '⏳ Inapakia…', saLogin);
+saveUser = withBtnBusy('button[onclick="saveUser()"]', '⏳ Inahifadhi…', saveUser);
+pwHash = (function(o){ return async function(){ busyStart(true); try{ return await o.apply(this, arguments); } finally{ busyEnd(true); } }; })(pwHash);
+
 loadAll();
 </script>
 </body>
