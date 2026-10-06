@@ -2277,10 +2277,29 @@ async function toggleNeed(sid, itemId, val){
 
 // ---------- STAFF ----------
 function subjectsSelectHtml(selected){
-  selected = selected||[];
-  return Object.entries(SUBJECTS_BY_LEVEL).map(([level,subs])=>
-    `<optgroup label="${level}">${subs.map(s=>`<option value="${s}" ${selected.includes(s)?'selected':''}>${s}</option>`).join('')}</optgroup>`
-  ).join('');
+  selected = (selected||[]).map(x=>String(x));
+  const low = x=>String(x).toLowerCase().trim();
+  const hidden = new Set((DB.hiddenSubjects||[]).map(low));
+  const isSel = n=>selected.some(x=>low(x)===low(n));
+  const opt = n=>`<option value="${esc(n)}" ${isSel(n)?'selected':''}>${esc(n)}</option>`;
+  const shown = new Set();   // majina yote yaliyokwisha kuonyeshwa (kuzuia kurudia kwenye makundi ya ziada)
+  let html = '';
+  // Makundi ya kawaida kwa ngazi (kama awali), bila masomo yaliyofutwa kwenye katalogi (isipokuwa yamechaguliwa)
+  Object.entries(SUBJECTS_BY_LEVEL).forEach(([level,subs])=>{
+    const list = subs.filter(n=>!hidden.has(low(n)) || isSel(n));
+    list.forEach(n=>shown.add(low(n)));
+    if(list.length) html += `<optgroup label="${esc(level)}">${list.map(opt).join('')}</optgroup>`;
+  });
+  // Makundi ya ziada: masomo ya shule yasiyo kwenye orodha ya juu
+  const extra = (label, names)=>{
+    const out=[]; names.forEach(n=>{ const k=low(n); if(!k||shown.has(k)) return; if(hidden.has(k) && !isSel(n)) return; shown.add(k); out.push(n); });
+    if(out.length) html += `<optgroup label="${esc(label)}">${out.map(opt).join('')}</optgroup>`;
+  };
+  extra('Masomo ya Shule Yaliyoongezwa na Wewe', (DB.customSubjects||[]).map(c=>c.jina));
+  extra('Masomo Mengine ya Mtaala (kutoka Masomo)', allCatalog().filter(c=>!c.custom).map(c=>c.jina));
+  extra('Masomo Yaliyopangwa Madarasani', (DB.subjects||[]).map(x=>x.jina));
+  extra('Yaliyochaguliwa Awali (hayapo tena kwenye orodha)', selected);
+  return html;
 }
 function onStaffPositionChange(){
   const val = document.getElementById('sfNafasi').value;
@@ -2321,7 +2340,7 @@ async function saveStaff(){
   const jina = document.getElementById('sfJina').value.trim();
   if(!jina){ alert('Andika jina la mfanyakazi.'); return; }
   const nafasi = document.getElementById('sfNafasi').value;
-  const masomo = nafasi==='Mwalimu' ? Array.from(document.getElementById('sfSubjects').selectedOptions).map(o=>o.value) : [];
+  const masomo = nafasi==='Mwalimu' ? [...new Set(Array.from(document.getElementById('sfSubjects').selectedOptions).map(o=>o.value))] : [];
   const nafasiNyingine = nafasi==='Nyingine' ? document.getElementById('sfNafasiNyingine').value.trim() : '';
   const existing = DB.staff.find(x=>x.id===id);
   let pichaVal = existing?existing.picha:null; if(sfPhotoData!==undefined){ await savePhoto('f_'+id, sfPhotoData); pichaVal='1'; }
@@ -3341,6 +3360,7 @@ function renderTimetablePage(){
   $('ttAddCard').style.display = canEditTimetable() ? 'block' : 'none';
   $('ttDarasaList').innerHTML = listClasses().map(c=>`<option value="${esc(c)}">`).join('');
   const subj = new Set(DB.subjects.map(s=>s.jina)); Object.values(SUBJECTS_BY_LEVEL).flat().forEach(x=>subj.add(x));
+  (DB.customSubjects||[]).forEach(c=>subj.add(c.jina)); allCatalog().forEach(c=>subj.add(c.jina));
   $('ttSomoList').innerHTML = [...subj].map(x=>`<option value="${esc(x)}">`).join('');
   $('ttSiku').innerHTML = DAYS.map(d=>`<option>${d}</option>`).join('');
   $('ttMwalimu').innerHTML = '<option value="">— hajapangiwa —</option>' + teacherUsers().map(t=>`<option value="${t.id}">${esc(t.jina)}</option>`).join('');
@@ -3830,6 +3850,7 @@ function openAssign(i){
     const ex=existing.find(s=>sameClass(s.darasa,m)); const typical=c.typ.includes(m); const n=syllabusFor(c.jina,m).length;
     rows+=`<tr><td><input type="checkbox" class="asC" value="${esc(m)}" ${ex||typical?'checked':''}></td><td>${esc(m)}${ex?' <span class="pill good">imepangwa</span>':''}</td><td>${tsel(m)}</td><td class="small">${ex?((DB.syllabus[ex.id]||{mada:[]}).mada.length+' mada'):(n?n+' mada za kawaida':'—')}</td></tr>`; }); });
   openGM('Panga '+c.jina+' kwenye Madarasa', `<p class="small">Tiki madarasa yanayofundishwa somo hili. Madarasa mapya yatapewa silabasi ya chaguo-msingi (unaweza kuihariri baadaye).</p>
+    <p class="small">👩‍🏫 Walimu wanaoonekana kwenye orodha ni wale waliosajiliwa kama <b>Watumiaji</b> wenye wadhifa wa "Mwalimu" (${teachers.length}).${teachers.length?'':' <b style="color:var(--bad)">Bado hakuna — nenda Watumiaji uwaongeze kwanza.</b>'}</p>
     <div class="table-scroll"><table><tbody id="asBody">${rows}</tbody></table></div>
     <label class="chip-check"><input type="checkbox" id="asSyl" checked> Weka silabasi ya chaguo-msingi kwa madarasa mapya</label>
     <button class="btn" style="margin-top:8px" onclick="saveAssign(${i})">Hifadhi</button>`);
