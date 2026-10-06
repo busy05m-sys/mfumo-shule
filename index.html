@@ -281,8 +281,8 @@ Minimum version required to store current data is: `+i+`.
     const fdb = firebase.firestore();
     const fauth = firebase.auth();
     const authReady = Promise.resolve();
-    // Kikao cha kuingia hakihifadhiwi kwenye kivinjari (kila ukurasa unapofunguliwa unaingia upya, kama awali)
-    window.fb = {auth: fauth, db: fdb, ready: fauth.setPersistence(firebase.auth.Auth.Persistence.NONE).catch(function(){})};
+    // Kikao kinahifadhiwa kwenye kichupo (kinadumu ukibonyeza refresh); "Nikumbuke" huki­dumisha hata kivinjari kikifungwa
+    window.fb = {auth: fauth, db: fdb, ready: fauth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(function(){})};
     window.storage = {
       async get(key, shared){
         await authReady;
@@ -330,6 +330,7 @@ Minimum version required to store current data is: `+i+`.
     <div id="loginFormWrap">
       <div class="field"><label>Barua Pepe</label><input id="lgEmail" placeholder="jina@shule.co.tz"></div>
       <div class="field"><label>Nenosiri</label><input type="password" id="lgPass"></div>
+      <label class="chip-check" style="margin:2px 0 10px"><input type="checkbox" id="lgRemember"> Nikumbuke kwenye kifaa hiki <span class="small">(usitumie kwenye kompyuta ya pamoja)</span></label>
       <button class="btn" style="width:100%" onclick="doLogin()">Ingia</button>
       <p class="small" style="text-align:center;margin-top:10px"><a href="#" onclick="forgotPassword();return false;">Umesahau nenosiri?</a></p>
     </div>
@@ -344,7 +345,7 @@ Minimum version required to store current data is: `+i+`.
     </div>
 
     <p class="small" id="loginError" style="color:var(--bad);margin-top:8px;"></p>
-    <p class="small" style="text-align:center;opacity:.55;margin-top:10px">Toleo 4.3</p>
+    <p class="small" style="text-align:center;opacity:.55;margin-top:10px">Toleo 4.4</p>
     <div style="text-align:center;margin-top:14px;font-size:11px;color:#9aa">Kwa msaada: info@kiseja.com · 0736631613</div>
     <div style="text-align:center;margin-top:6px;"><a href="#" onclick="openSuperAdmin();return false;" style="font-size:11px;color:#9aa;text-decoration:underline">Admin wa Mfumo (Msimamizi wa Huduma)</a></div>
   </div>
@@ -1465,7 +1466,7 @@ async function pwFields(pass){ return PW_OK ? {pass_h: await pwHash(pass)} : {pa
    Kila mtumiaji ana akaunti ya Firebase (barua pepe + nenosiri). Kila akaunti ina "uanachama"
    (members/{uid}) unaoonyesha taasisi yake na wadhifa (admin|member). Firestore Rules zinaruhusu
    kusoma/kuandika data ya taasisi X kwa wanachama wa X pekee. */
-const APP_VERSION = '4.3';
+const APP_VERSION = '4.4';
 const SUPER_ADMIN_EMAIL = 'info@kiseja.com';
 const ADMIN_APP_ROLES = ['Msimamizi Mkuu','Mkuu wa Shule/Chuo'];
 function memberRoleFor(appRole){ return ADMIN_APP_ROLES.includes(appRole) ? 'admin' : 'member'; }
@@ -1485,7 +1486,12 @@ function authErrMsg(e){
   };
   return m[c] || ('Hitilafu imetokea: ' + (c || (e && e.message) || ''));
 }
-async function fbSignIn(email, pass){ await fb.ready; return fb.auth.signInWithEmailAndPassword(email, pass); }
+async function fbSignIn(email, pass, mode){
+  await fb.ready;
+  const P = firebase.auth.Auth.Persistence;
+  try{ await fb.auth.setPersistence(mode==='local' ? P.LOCAL : mode==='none' ? P.NONE : P.SESSION); }catch(e){}
+  return fb.auth.signInWithEmailAndPassword(email, pass);
+}
 async function getMember(authUid){
   const sn = await fb.db.collection('members').doc(authUid).get();
   return sn.exists ? sn.data() : null;
@@ -1528,6 +1534,7 @@ async function registerInstitution(){
   if(pass.length < 6){ errEl.textContent = 'Nenosiri liwe na herufi angalau 6.'; return; }
   try{
     await fb.ready;
+    try{ await fb.auth.setPersistence(firebase.auth.Auth.Persistence.SESSION); }catch(e){}
     let authUid;
     try{
       const c = await fb.auth.createUserWithEmailAndPassword(email, pass); authUid = c.user.uid;
@@ -1563,31 +1570,36 @@ function deviceInfo(){
   const os = /Android/.test(ua)?'Android':/iPhone|iPad/.test(ua)?'iOS':/Windows/.test(ua)?'Windows':/Mac/.test(ua)?'Mac':/Linux/.test(ua)?'Linux':'';
   return br+(os?(' / '+os):'')+' · '+screen.width+'x'+screen.height;
 }
+async function openSessionFor(authUid, email){
+  const mem = await getMember(authUid);
+  if(!mem) return {ok:false, msg:'Akaunti hii haina idhini ya kuingia kwenye taasisi yoyote. Kama ni taasisi mpya tumia "Sajili Taasisi"; vinginevyo wasiliana na msimamizi wa shule yako.'};
+  const instId = String(mem.inst||'').replace(/^inst_/,'');
+  const inst = await loadInstitution(instId);
+  if(!inst) return {ok:false, msg:'Taarifa za taasisi hazikupatikana. Jaribu tena.'};
+  DB = inst; currentInstId = instId;
+  if(DB._migrated) delete DB._migrated;
+  const me = DB.users.find(x=>x.authUid===authUid) || DB.users.find(x=>(x.email||'').toLowerCase()===email);
+  if(!me) return {ok:false, msg:'Taarifa zako hazipo kwenye orodha ya watumiaji wa taasisi. Wasiliana na msimamizi.'};
+  currentUser = me;
+  takeSnap();
+  // Kuunganisha rekodi na akaunti, na kuondoa nywila za zamani (za wazi/hash) zilizobaki kwenye data
+  if(me.authUid!==authUid || me.pass || me.pass_h){
+    me.authUid = authUid; delete me.pass; delete me.pass_h;
+    try{ await persist(); }catch(e){ console.error(e); }
+  }
+  return {ok:true};
+}
 async function doLogin(){
   const errEl = document.getElementById('loginError'); errEl.style.color = 'var(--bad)';
   const email = document.getElementById('lgEmail').value.trim().toLowerCase();
   const pass = document.getElementById('lgPass').value;
   if(!email||!pass){ errEl.textContent = 'Jaza barua pepe na nenosiri.'; return; }
+  const remember = !!(document.getElementById('lgRemember') && document.getElementById('lgRemember').checked);
   const fail = async (msg)=>{ errEl.textContent = msg; try{ await fb.auth.signOut(); }catch(_){} DB = null; currentInstId = null; currentUser = null; };
   try{
-    const cred = await fbSignIn(email, pass);
-    const authUid = cred.user.uid;
-    const mem = await getMember(authUid);
-    if(!mem){ await fail('Akaunti hii haina idhini ya kuingia kwenye taasisi yoyote. Kama ni taasisi mpya tumia "Sajili Taasisi"; vinginevyo wasiliana na msimamizi wa shule yako.'); return; }
-    const instId = String(mem.inst||'').replace(/^inst_/,'');
-    const inst = await loadInstitution(instId);
-    if(!inst){ await fail('Taarifa za taasisi hazikupatikana. Jaribu tena.'); return; }
-    DB = inst; currentInstId = instId;
-    if(DB._migrated) delete DB._migrated;
-    const me = DB.users.find(x=>x.authUid===authUid) || DB.users.find(x=>(x.email||'').toLowerCase()===email);
-    if(!me){ await fail('Taarifa zako hazipo kwenye orodha ya watumiaji wa taasisi. Wasiliana na msimamizi.'); return; }
-    currentUser = me;
-    takeSnap();
-    // Kuunganisha rekodi na akaunti, na kuondoa nywila za zamani (za wazi/hash) zilizobaki kwenye data
-    if(me.authUid!==authUid || me.pass || me.pass_h){
-      me.authUid = authUid; delete me.pass; delete me.pass_h;
-      try{ await persist(); }catch(e){ console.error(e); }
-    }
+    const cred = await fbSignIn(email, pass, remember ? 'local' : 'session');
+    const r = await openSessionFor(cred.user.uid, email);
+    if(!r.ok){ await fail(r.msg); return; }
     await logAction('login','Mfumo','Ameingia · '+deviceInfo());
     enterApp();
   }catch(e){
@@ -1595,6 +1607,32 @@ async function doLogin(){
     await fail(authErrMsg(e));
   }
 }
+// Kurejesha kikao ukurasa unapofunguliwa upya (refresh): mtumiaji anarudi alipokuwa, bila kuingia tena
+async function restoreSession(){
+  try{
+    await fb.ready;
+    const user = await new Promise(res=>{ const un = fb.auth.onAuthStateChanged(u=>{ un(); res(u); }); });
+    if(!user) return;
+    if((user.email||'').toLowerCase()===SUPER_ADMIN_EMAIL){ await fb.auth.signOut(); return; }   // Admin Mkuu haendelei kikao
+    const errEl = document.getElementById('loginError');
+    errEl.style.color = 'var(--ink-soft,#5b6b7b)'; errEl.textContent = '⏳ Inarejesha kikao chako…';
+    let r;
+    try{ r = await openSessionFor(user.uid, (user.email||'').toLowerCase()); }
+    catch(e){ console.error(e); errEl.textContent = 'Imeshindwa kurejesha kikao (angalia mtandao). Onyesha ukurasa upya au ingia tena.'; return; }
+    if(!r.ok){ DB = null; currentInstId = null; currentUser = null; try{ await fb.auth.signOut(); }catch(_){}; errEl.style.color = 'var(--bad)'; errEl.textContent = r.msg; return; }
+    errEl.textContent = '';
+    enterApp();
+    let pg = null; try{ pg = localStorage.getItem('elimu_pg_'+user.uid); }catch(e){}
+    if(pg && pg!=='dash'){
+      const btn = document.querySelector('.nav-btn[data-page="'+pg+'"]');
+      if(btn && !btn.hidden && btn.style.display!=='none') btn.click();
+    }
+  }catch(e){ console.error('restoreSession', e); }
+}
+// Kumbuka ukurasa wa mwisho aliokuwa mtumiaji (kwa kila akaunti)
+document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click', ()=>{
+  try{ const u = fb.auth.currentUser; if(u) localStorage.setItem('elimu_pg_'+u.uid, b.dataset.page); }catch(e){}
+}));
 async function doLogout(silent){
   if(!silent && currentUser && currentInstId){ try{ await logAction('logout','Mfumo','Ametoka'); }catch(e){} }
   try{ await fb.auth.signOut(); }catch(e){}
@@ -4785,7 +4823,7 @@ async function saLogin(){
   const p = $('saPass').value; const err = $('saGateErr'); err.textContent = '';
   if(!p){ err.textContent = 'Andika nenosiri.'; return; }
   try{
-    const c = await fbSignIn(SUPER_ADMIN_EMAIL, p);
+    const c = await fbSignIn(SUPER_ADMIN_EMAIL, p, 'none');   // Admin Mkuu: kikao HAKIHIFADHIWI (usalama)
     if(!c.user.emailVerified){
       try{ await c.user.sendEmailVerification(); }catch(e){}
       await fb.auth.signOut();
@@ -5542,6 +5580,7 @@ saveUser = withBtnBusy('button[onclick="saveUser()"]', '⏳ Inahifadhi…', save
 pwHash = (function(o){ return async function(){ busyStart(true); try{ return await o.apply(this, arguments); } finally{ busyEnd(true); } }; })(pwHash);
 
 loadAll();
+restoreSession();
 </script>
 </body>
 </html>
